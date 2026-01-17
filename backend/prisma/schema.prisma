@@ -1,0 +1,186 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  BRANCH_MANAGER
+  ACCOUNTING
+}
+
+enum PayrollStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  PAID
+}
+
+enum BranchType {
+  VETERINARY_CLINIC
+  VETERINARY_HOSPITAL
+  TRADING
+}
+
+enum PositionType {
+  RESIDENT_VETERINARIAN
+  JUNIOR_VETERINARIAN
+  GROOMER
+  GROOMER_VET_ASSISTANT
+  VETERINARY_ASSISTANT
+  VETERINARY_NURSE
+  CLINIC_SECRETARY
+  STAFF
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  name      String
+  role      UserRole @default(ACCOUNTING)
+  branchId  Int?
+  branch    Branch?  @relation(fields: [branchId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Branch {
+  id                   Int        @id @default(autoincrement())
+  name                 String
+  address              String
+  contact              String?
+  type                 BranchType @default(VETERINARY_CLINIC)
+  isActive             Boolean    @default(true)
+  workingDaysPerMonth  Int        @default(22)
+  workingHoursPerDay   Int        @default(8)
+  employees            Employee[]
+  users                User[]
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+}
+
+model Employee {
+  id              Int              @id @default(autoincrement())
+  branchId        Int
+  branch          Branch           @relation(fields: [branchId], references: [id])
+  name            String
+  position        PositionType
+  salary          Decimal          @db.Decimal(12, 2)
+  ratePerDay      Decimal          @db.Decimal(12, 6)
+  ratePerHour     Decimal          @db.Decimal(12, 6)
+  address         String?
+  sssNo           String?
+  tinNo           String?
+  philhealthNo    String?
+  pagibigNo       String?
+  hiredOn         DateTime?
+  isActive        Boolean          @default(true)
+  payrollPeriods  PayrollPeriod[]
+  fixedDeductions FixedDeduction[]
+  cashAdvances    CashAdvance[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+model PayrollPeriod {
+  id              Int           @id @default(autoincrement())
+  employeeId      Int
+  employee        Employee      @relation(fields: [employeeId], references: [id])
+  startDate       DateTime
+  endDate         DateTime
+  workingDays     Int           @default(0)
+  dayOff          Int           @default(0)
+  absences        Int           @default(0)
+  totalDaysPresent Int          @default(0)
+  holidays        Int           @default(0)
+  holidayRate     Decimal       @db.Decimal(4, 2) @default(1.0)
+  overtimeHours   Decimal       @db.Decimal(8, 2) @default(0)
+  lateMinutes     Decimal       @db.Decimal(8, 2) @default(0)
+  mealAllowance   Decimal       @db.Decimal(12, 2) @default(0)
+  silPay          Decimal       @db.Decimal(12, 2) @default(0)
+  birthdayLeave   Decimal       @db.Decimal(12, 2) @default(0)
+  basicPay        Decimal       @db.Decimal(12, 2) @default(0)
+  holidayPay      Decimal       @db.Decimal(12, 2) @default(0)
+  overtimePay     Decimal       @db.Decimal(12, 2) @default(0)
+  totalIncentives Decimal       @db.Decimal(12, 2) @default(0)
+  grossPay        Decimal       @db.Decimal(12, 2) @default(0)
+  totalDeductions Decimal       @db.Decimal(12, 2) @default(0)
+  netPay          Decimal       @db.Decimal(12, 2) @default(0)
+  status          PayrollStatus @default(DRAFT)
+  incentives      Incentive[]
+  deductions      Deduction[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([employeeId, startDate, endDate])
+}
+
+model Incentive {
+  id           Int           @id @default(autoincrement())
+  payrollId    Int
+  payroll      PayrollPeriod @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  type         String
+  count        Decimal       @db.Decimal(12, 2) @default(0) // Can be decimal for grooming units like 50.5
+  inputValue   Decimal       @db.Decimal(12, 2) @default(0) // For surgery/emergency total amounts
+  rate         Decimal       @db.Decimal(12, 4) @default(0) // Rate can be percentage like 0.10
+  amount       Decimal       @db.Decimal(12, 2) @default(0)
+  formula      String?       // e.g., "5 x 50 = 250" for transparency
+  dateEarned   DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model IncentiveConfig {
+  id          Int      @id @default(autoincrement())
+  type        String   @unique
+  name        String   // Display name
+  rate        Decimal  @db.Decimal(12, 4)
+  formulaType String   // "COUNT_MULTIPLY" or "PERCENT"
+  description String?
+  positions   String[] // Which positions can earn this incentive
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Deduction {
+  id        Int           @id @default(autoincrement())
+  payrollId Int
+  payroll   PayrollPeriod @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  type      String
+  amount    Decimal       @db.Decimal(12, 2) @default(0)
+  notes     String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+}
+
+model FixedDeduction {
+  id         Int      @id @default(autoincrement())
+  employeeId Int
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type       String
+  amount     Decimal  @db.Decimal(12, 2) @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([employeeId, type])
+}
+
+model CashAdvance {
+  id           Int       @id @default(autoincrement())
+  employeeId   Int
+  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  amount       Decimal   @db.Decimal(12, 2)
+  dateTaken    DateTime
+  dateDeducted DateTime?
+  isPaid       Boolean   @default(false)
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
