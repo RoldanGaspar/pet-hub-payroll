@@ -12,10 +12,11 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
-      preview: {
-            host: true,
-            allowedHosts: ['pet-hub-payroll-copy-production.up.railway.app'],            strictPort: true,
-            port: 4173
-          },
+  },
+  preview: {
+    host: true,
+    allowedHosts: ['pet-hub-payroll-copy-production.up.railway.app'],
+    strictPort: true,
+    port: 4173
   },
 })
