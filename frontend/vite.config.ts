@@ -14,8 +14,7 @@ export default defineConfig({
     },
       preview: {
             host: true,
-            allowedHosts: ['.railway.app', '.up.railway.app'],
-            strictPort: true,
+            allowedHosts: ['pet-hub-payroll-copy-production.up.railway.app'],            strictPort: true,
             port: 4173
           },
   },
