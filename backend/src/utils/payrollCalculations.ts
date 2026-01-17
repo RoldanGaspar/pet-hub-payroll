@@ -170,8 +170,19 @@ export enum FormulaType {
   PERCENT = 'PERCENT', // inputValue * rate (e.g., 34550 x 10% = 3455)
 }
 
+// Incentive config interface
+interface IncentiveConfigItem {
+  type: IncentiveType;
+  name: string;
+  rate: number;
+  formulaType: FormulaType;
+  description: string;
+  positions: PositionType[];
+  sortOrder: number;
+}
+
 // Default incentive rates configuration
-export const DEFAULT_INCENTIVE_CONFIG = [
+export const DEFAULT_INCENTIVE_CONFIG: IncentiveConfigItem[] = [
   {
     type: IncentiveType.CBC,
     name: 'CBC (Complete Blood Count)',
@@ -316,7 +327,7 @@ export const DEFAULT_INCENTIVE_CONFIG = [
 ];
 
 // Get incentive types available for a specific position
-export function getIncentiveTypesForPosition(position: PositionType): typeof DEFAULT_INCENTIVE_CONFIG {
+export function getIncentiveTypesForPosition(position: PositionType): IncentiveConfigItem[] {
   return DEFAULT_INCENTIVE_CONFIG.filter((config) =>
     config.positions.includes(position)
   ).sort((a, b) => a.sortOrder - b.sortOrder);
