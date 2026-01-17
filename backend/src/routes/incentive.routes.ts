@@ -66,7 +66,7 @@ router.get('/config/position/:position', authMiddleware, async (req: AuthRequest
 // Update incentive configuration (admin only)
 router.put('/config/:type', authMiddleware, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
   try {
-    const { type } = req.params;
+    const type = req.params.type as string;
     const { rate, name, description, positions, isActive } = req.body;
 
     // Upsert the config
