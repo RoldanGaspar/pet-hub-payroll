@@ -132,7 +132,7 @@ const DEFAULT_INCENTIVE_CONFIG = [
 async function main() {
   console.log('Seeding database...');
 
-  // Create admin user
+  // Create admin users
   const hashedPassword = await bcrypt.hash('admin123', 10);
   
   const admin = await prisma.user.upsert({
@@ -145,8 +145,22 @@ async function main() {
       role: 'ADMIN',
     },
   });
-
   console.log('Created admin user:', admin.email);
+
+  // Create test admin account
+  const testHashedPassword = await bcrypt.hash('test123', 10);
+  
+  const testAdmin = await prisma.user.upsert({
+    where: { email: 'test@pethub.com' },
+    update: {},
+    create: {
+      email: 'test@pethub.com',
+      password: testHashedPassword,
+      name: 'Test Admin',
+      role: 'ADMIN',
+    },
+  });
+  console.log('Created test admin user:', testAdmin.email);
 
   // Default rate calculation settings
   const DEFAULT_WORKING_DAYS_PER_MONTH = 22;
