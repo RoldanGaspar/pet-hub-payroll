@@ -2,7 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '../utils/prisma';
-import { authMiddleware, AuthRequest } from '../middleware/auth.middleware';
+import { authMiddleware, AuthRequest, JWT_SECRET, requireRole } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -33,7 +33,7 @@ router.post('/login', async (req, res) => {
         role: user.role,
         branchId: user.branchId,
       },
-      process.env.JWT_SECRET || 'secret',
+      JWT_SECRET,
       { expiresIn: '8h' }
     );
 
@@ -53,8 +53,8 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Register (admin only in production)
-router.post('/register', async (req, res) => {
+// Register (admin only)
+router.post('/register', authMiddleware, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
   try {
     const { email, password, name, role, branchId } = req.body;
 

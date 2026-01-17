@@ -1,6 +1,17 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
+// Ensure JWT_SECRET is set - crash early if not configured
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('FATAL: JWT_SECRET environment variable is not set. Server cannot start without it.');
+  }
+  return secret;
+}
+
+export const JWT_SECRET: string = getJwtSecret();
+
 export interface AuthRequest extends Request {
   user?: {
     id: number;
@@ -32,7 +43,7 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as {
+    const decoded = jwt.verify(token, JWT_SECRET) as {
       id: number;
       email: string;
       role: string;
