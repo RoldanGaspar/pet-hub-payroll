@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Edit, Trash2, Users, Search, Info } from 'lucide-react';
+import { Plus, Edit, Trash2, Users, Search, Info, Receipt, Ban } from 'lucide-react';
 import Header from '../components/layout/Header';
 import { employeeApi, branchApi } from '../utils/api';
 import { Employee, Branch, POSITION_LABELS, PositionType } from '../types';
-import { formatCurrency, formatDate, cn } from '../utils/helpers';
+import { formatCurrency, cn } from '../utils/helpers';
+import FixedDeductionsModal from '../components/FixedDeductionsModal';
+import IncentiveExclusionsModal from '../components/IncentiveExclusionsModal';
 
 // Constants for rate calculation
 const ANNUAL_WORKING_DAYS = 313;
@@ -51,6 +53,8 @@ export default function Employees() {
   const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [recalculateRates, setRecalculateRates] = useState(true);
+  const [deductionsEmployee, setDeductionsEmployee] = useState<Employee | null>(null);
+  const [exclusionsEmployee, setExclusionsEmployee] = useState<Employee | null>(null);
   const [formData, setFormData] = useState({
     branchId: '',
     name: '',
@@ -243,7 +247,7 @@ export default function Employees() {
                   <th>Salary</th>
                   <th>Rate/Day</th>
                   <th>Rate/Hour</th>
-                  <th>Hired</th>
+                  <th>Deductions</th>
                   <th>Status</th>
                   <th></th>
                 </tr>
@@ -278,8 +282,20 @@ export default function Employees() {
                       <td className="font-medium">{formatCurrency(employee.salary)}</td>
                       <td className="text-primary-600 font-medium">{formatCurrency(employee.ratePerDay)}</td>
                       <td className="text-slate-600">{formatCurrency(employee.ratePerHour)}</td>
-                      <td className="text-slate-500">
-                        {employee.hiredOn ? formatDate(employee.hiredOn) : '-'}
+                      <td>
+                        <button
+                          onClick={() => setDeductionsEmployee(employee)}
+                          className="text-sm text-emerald-600 hover:text-emerald-700 hover:underline font-medium"
+                        >
+                          {employee.fixedDeductions && employee.fixedDeductions.length > 0
+                            ? formatCurrency(
+                                employee.fixedDeductions.reduce(
+                                  (sum, d) => sum + Number(d.amount),
+                                  0
+                                )
+                              )
+                            : '₱0.00'}
+                        </button>
                       </td>
                       <td>
                         <span
@@ -294,14 +310,30 @@ export default function Employees() {
                       <td>
                         <div className="flex items-center gap-1 justify-end">
                           <button
+                            onClick={() => setDeductionsEmployee(employee)}
+                            className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg"
+                            title="Fixed Deductions"
+                          >
+                            <Receipt className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => setExclusionsEmployee(employee)}
+                            className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg"
+                            title="Incentive Exclusions (NOT INCLUDED)"
+                          >
+                            <Ban className="h-4 w-4" />
+                          </button>
+                          <button
                             onClick={() => openModal(employee)}
                             className="p-2 text-slate-400 hover:text-primary-600 hover:bg-slate-100 rounded-lg"
+                            title="Edit Employee"
                           >
                             <Edit className="h-4 w-4" />
                           </button>
                           <button
                             onClick={() => handleDelete(employee)}
                             className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                            title="Delete"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -546,6 +578,22 @@ export default function Employees() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Fixed Deductions Modal */}
+        {deductionsEmployee && (
+          <FixedDeductionsModal
+            employee={deductionsEmployee}
+            onClose={() => setDeductionsEmployee(null)}
+          />
+        )}
+
+        {/* Incentive Exclusions Modal */}
+        {exclusionsEmployee && (
+          <IncentiveExclusionsModal
+            employee={exclusionsEmployee}
+            onClose={() => setExclusionsEmployee(null)}
+          />
         )}
       </div>
     </>

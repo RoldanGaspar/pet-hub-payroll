@@ -151,9 +151,10 @@ router.post('/', authMiddleware, async (req: AuthRequest, res) => {
         hiredOn: hiredOn ? new Date(hiredOn) : null,
         fixedDeductions: fixedDeductions
           ? {
-              create: fixedDeductions.map((fd: { type: string; amount: number }) => ({
+              create: fixedDeductions.map((fd: { type: string; amount: number; category?: string }) => ({
                 type: fd.type,
                 amount: fd.amount,
+                category: fd.category || 'OTHERS',
               })),
             }
           : undefined,
@@ -341,10 +342,11 @@ router.put('/:id/fixed-deductions', authMiddleware, async (req: AuthRequest, res
 
     if (deductions && deductions.length > 0) {
       await prisma.fixedDeduction.createMany({
-        data: deductions.map((d: { type: string; amount: number }) => ({
+        data: deductions.map((d: { type: string; amount: number; category?: string }) => ({
           employeeId: parseInt(id),
           type: d.type,
           amount: d.amount,
+          category: d.category || 'OTHERS',
         })),
       });
     }
@@ -357,6 +359,104 @@ router.put('/:id/fixed-deductions', authMiddleware, async (req: AuthRequest, res
     return res.json(employee);
   } catch (error) {
     console.error('Update fixed deductions error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get employee fixed deductions with available deduction types
+router.get('/:id/fixed-deductions', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const id = req.params.id as string;
+
+    const employee = await prisma.employee.findUnique({
+      where: { id: parseInt(id) },
+      include: { fixedDeductions: { orderBy: { type: 'asc' } } },
+    });
+
+    if (!employee) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+
+    return res.json({
+      fixedDeductions: employee.fixedDeductions,
+    });
+  } catch (error) {
+    console.error('Get fixed deductions error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get incentive exclusions for an employee
+router.get('/:id/incentive-exclusions', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const id = parseInt(req.params.id as string);
+
+    const employee = await prisma.employee.findUnique({
+      where: { id },
+    });
+
+    if (!employee) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+
+    const exclusions = await prisma.incentiveExclusion.findMany({
+      where: { employeeId: id },
+      orderBy: { incentiveType: 'asc' },
+    });
+
+    return res.json(exclusions);
+  } catch (error) {
+    console.error('Get incentive exclusions error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Toggle incentive exclusion (add or remove)
+router.post('/:id/incentive-exclusions', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    const { incentiveType } = req.body;
+
+    if (!incentiveType) {
+      return res.status(400).json({ error: 'incentiveType is required' });
+    }
+
+    const employee = await prisma.employee.findUnique({
+      where: { id },
+    });
+
+    if (!employee) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+
+    // Check if exclusion already exists
+    const existing = await prisma.incentiveExclusion.findUnique({
+      where: {
+        employeeId_incentiveType: {
+          employeeId: id,
+          incentiveType: incentiveType as string,
+        },
+      },
+    });
+
+    if (existing) {
+      // Remove exclusion
+      await prisma.incentiveExclusion.delete({
+        where: { id: existing.id },
+      });
+      return res.json({ excluded: false, message: 'Incentive exclusion removed' });
+    } else {
+      // Add exclusion
+      const exclusion = await prisma.incentiveExclusion.create({
+        data: {
+          employeeId: id,
+          incentiveType: incentiveType as string,
+        },
+      });
+      return res.json({ excluded: true, exclusion, message: 'Incentive exclusion added' });
+    }
+  } catch (error) {
+    console.error('Toggle incentive exclusion error:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

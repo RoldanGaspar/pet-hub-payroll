@@ -60,8 +60,12 @@ export const employeeApi = {
   create: (data: any) => api.post('/employees', data),
   update: (id: number, data: any) => api.put(`/employees/${id}`, data),
   delete: (id: number) => api.delete(`/employees/${id}`),
+  getFixedDeductions: (id: number) => api.get(`/employees/${id}/fixed-deductions`),
   updateFixedDeductions: (id: number, deductions: any[]) =>
     api.put(`/employees/${id}/fixed-deductions`, { deductions }),
+  getIncentiveExclusions: (id: number) => api.get(`/employees/${id}/incentive-exclusions`),
+  toggleIncentiveExclusion: (id: number, incentiveType: string) =>
+    api.post(`/employees/${id}/incentive-exclusions`, { incentiveType }),
 };
 
 // Payroll API
@@ -94,6 +98,21 @@ export const incentiveApi = {
   // Calculation endpoint
   calculate: (position: string, incentives: any[]) =>
     api.post('/incentives/calculate', { position, incentives }),
+
+  // Get eligible employee counts for shared types in a branch
+  getEligibleCounts: (branchId: number) =>
+    api.get(`/incentives/eligible-counts/${branchId}`),
+};
+
+// Incentive Sheet API (Branch-level daily input grid)
+export const incentiveSheetApi = {
+  getSheet: (branchId: number, startDate: string, endDate: string) =>
+    api.get('/incentive-sheets', { params: { branchId, startDate, endDate } }),
+  saveInputs: (sheetId: number, inputs: { date: string; type: string; value: number }[]) =>
+    api.put(`/incentive-sheets/${sheetId}/inputs`, { inputs }),
+  distribute: (sheetId: number) =>
+    api.post(`/incentive-sheets/${sheetId}/distribute`),
+  getConfig: () => api.get('/incentive-sheets/config'),
 };
 
 // Deduction API
@@ -103,6 +122,8 @@ export const deductionApi = {
   bulkUpdate: (payrollId: number, deductions: any[]) =>
     api.post('/deductions/bulk', { payrollId, deductions }),
   applyFixed: (payrollId: number) => api.post(`/deductions/apply-fixed/${payrollId}`),
+  updateDivisor: (payrollId: number, divisor: number) =>
+    api.put(`/deductions/divisor/${payrollId}`, { divisor }),
   delete: (id: number) => api.delete(`/deductions/${id}`),
 };
 

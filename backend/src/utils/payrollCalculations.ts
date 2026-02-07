@@ -6,8 +6,7 @@ export interface PayrollCalculationInput {
   ratePerHour: number;
   workingDays: number;
   totalDaysPresent: number;
-  holidays: number;
-  holidayRate: number;
+  holidays: number; // Can be decimal (e.g., 1.30)
   overtimeHours: number;
   lateMinutes: number;
   mealAllowance: number;
@@ -30,10 +29,10 @@ export function calculatePayroll(input: PayrollCalculationInput): PayrollCalcula
   // Basic Pay = Rate/Day x Total Days Present
   const basicPay = input.ratePerDay * input.totalDaysPresent;
 
-  // Holiday Pay = Rate/Day x Holiday Rate x Number of Holidays
-  const holidayPay = input.ratePerDay * input.holidayRate * input.holidays;
+  // Holiday Pay = No. of Holidays × Rate/Day
+  const holidayPay = input.holidays * input.ratePerDay;
 
-  // Overtime Pay = Rate/Hour x 1.25 x OT Hours
+  // Overtime Pay = Rate/Hour × OT Hours
   const overtimePay = input.ratePerHour * input.overtimeHours;
 
   // Late Deduction = Rate/Hour x (Late Minutes / 60)
@@ -177,8 +176,10 @@ interface IncentiveConfigItem {
   rate: number;
   formulaType: FormulaType;
   description: string;
-  positions: PositionType[];
+  positions: PositionType[]; // Who RECEIVES this incentive
   sortOrder: number;
+  isShared?: boolean; // If true, total is divided among eligible employees
+  divisionPositions?: PositionType[]; // Who is counted for division (defaults to positions if not set)
 }
 
 // Default incentive rates configuration
@@ -255,6 +256,7 @@ export const DEFAULT_INCENTIVE_CONFIG: IncentiveConfigItem[] = [
       PositionType.VETERINARY_ASSISTANT,
       PositionType.VETERINARY_NURSE,
       PositionType.STAFF,
+      PositionType.GROOMER,
     ],
     sortOrder: 6,
   },
@@ -270,6 +272,7 @@ export const DEFAULT_INCENTIVE_CONFIG: IncentiveConfigItem[] = [
       PositionType.VETERINARY_ASSISTANT,
       PositionType.VETERINARY_NURSE,
       PositionType.STAFF,
+      PositionType.GROOMER,
     ],
     sortOrder: 7,
   },
@@ -278,38 +281,45 @@ export const DEFAULT_INCENTIVE_CONFIG: IncentiveConfigItem[] = [
     name: 'Confinement (Vet)',
     rate: 55,
     formulaType: FormulaType.COUNT_MULTIPLY,
-    description: 'Units × ₱55 per confinement unit',
+    description: 'Total units × ₱55 ÷ all vets (Resident Vets only receive)',
     positions: [
+      PositionType.RESIDENT_VETERINARIAN, // Only Resident Vets RECEIVE
+    ],
+    sortOrder: 8,
+    isShared: true,
+    divisionPositions: [ // ALL vets counted for division
       PositionType.RESIDENT_VETERINARIAN,
       PositionType.JUNIOR_VETERINARIAN,
     ],
-    sortOrder: 8,
   },
   {
     type: IncentiveType.CONFINEMENT_ASST,
     name: 'Confinement (Assistant)',
     rate: 45,
     formulaType: FormulaType.COUNT_MULTIPLY,
-    description: 'Units × ₱45 per confinement unit',
+    description: 'Total units × ₱45 ÷ eligible staff',
     positions: [
       PositionType.VETERINARY_ASSISTANT,
       PositionType.GROOMER_VET_ASSISTANT,
       PositionType.VETERINARY_NURSE,
       PositionType.STAFF,
+      PositionType.GROOMER,
     ],
     sortOrder: 9,
+    isShared: true,
   },
   {
     type: IncentiveType.GROOMING,
     name: 'Grooming',
     rate: 75,
     formulaType: FormulaType.COUNT_MULTIPLY,
-    description: 'Units × ₱75 per grooming session',
+    description: 'Total units × ₱75 ÷ eligible groomers',
     positions: [
       PositionType.GROOMER,
       PositionType.GROOMER_VET_ASSISTANT,
     ],
     sortOrder: 10,
+    isShared: true,
   },
   {
     type: IncentiveType.NURSING,
@@ -321,8 +331,10 @@ export const DEFAULT_INCENTIVE_CONFIG: IncentiveConfigItem[] = [
       PositionType.VETERINARY_NURSE,
       PositionType.VETERINARY_ASSISTANT,
       PositionType.STAFF,
+      PositionType.GROOMER,
     ],
     sortOrder: 11,
+    isShared: true,
   },
 ];
 
@@ -340,6 +352,7 @@ export interface IncentiveCalculationInput {
   inputValue: number; // For PERCENT formula (e.g., total surgery amount)
   rate: number;
   formulaType: FormulaType;
+  numEligible?: number; // For shared types: divide total among eligible employees
 }
 
 export interface IncentiveCalculationResult {
@@ -350,10 +363,18 @@ export interface IncentiveCalculationResult {
 export function calculateIncentive(input: IncentiveCalculationInput): IncentiveCalculationResult {
   let amount = 0;
   let formula = '';
+  const numEligible = input.numEligible && input.numEligible > 0 ? input.numEligible : 0;
 
   if (input.formulaType === FormulaType.COUNT_MULTIPLY) {
-    amount = input.count * input.rate;
-    formula = `${input.count} × ₱${input.rate.toLocaleString()} = ₱${roundToTwo(amount).toLocaleString()}`;
+    const totalPay = input.count * input.rate;
+    if (numEligible > 1) {
+      // Shared type: divide among eligible employees
+      amount = totalPay / numEligible;
+      formula = `(${input.count} × ₱${input.rate.toLocaleString()}) ÷ ${numEligible} = ₱${roundToTwo(amount).toLocaleString()}`;
+    } else {
+      amount = totalPay;
+      formula = `${input.count} × ₱${input.rate.toLocaleString()} = ₱${roundToTwo(amount).toLocaleString()}`;
+    }
   } else if (input.formulaType === FormulaType.PERCENT) {
     amount = input.inputValue * input.rate;
     const percentDisplay = (input.rate * 100).toFixed(0);
@@ -364,6 +385,26 @@ export function calculateIncentive(input: IncentiveCalculationInput): IncentiveC
     amount: roundToTwo(amount),
     formula,
   };
+}
+
+// Check if an incentive type is shared (divided among eligible employees)
+export function isSharedIncentiveType(type: string): boolean {
+  const config = DEFAULT_INCENTIVE_CONFIG.find((c) => c.type === type);
+  return config?.isShared === true;
+}
+
+// Get the positions counted for DIVISION of a shared incentive type
+// (may include more positions than those who actually RECEIVE the incentive)
+export function getDivisionPositionsForType(type: string): PositionType[] {
+  const config = DEFAULT_INCENTIVE_CONFIG.find((c) => c.type === type);
+  // Use divisionPositions if set, otherwise fall back to positions (who receives)
+  return config?.divisionPositions || config?.positions || [];
+}
+
+// Get the positions who RECEIVE a shared incentive type
+export function getReceivingPositionsForType(type: string): PositionType[] {
+  const config = DEFAULT_INCENTIVE_CONFIG.find((c) => c.type === type);
+  return config?.positions || [];
 }
 
 // Calculate all incentives for an employee

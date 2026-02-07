@@ -139,7 +139,6 @@ router.put('/:id', authMiddleware, async (req: AuthRequest, res) => {
       absences,
       totalDaysPresent,
       holidays,
-      holidayRate,
       overtimeHours,
       lateMinutes,
       mealAllowance,
@@ -167,8 +166,9 @@ router.put('/:id', authMiddleware, async (req: AuthRequest, res) => {
     const totalDeductions = existing.deductions.reduce((sum, d) => sum + Number(d.amount), 0);
 
     // Calculate payroll
+    // Total Days Paid = Working Days - Rest Days (dayOff) - Absences
     const calculatedDaysPresent =
-      totalDaysPresent ?? (workingDays || existing.workingDays) - (absences ?? existing.absences);
+      totalDaysPresent ?? (workingDays || existing.workingDays) - (dayOff ?? existing.dayOff) - (absences ?? existing.absences);
 
     const calculation = calculatePayroll({
       salary: Number(existing.employee.salary),
@@ -176,8 +176,7 @@ router.put('/:id', authMiddleware, async (req: AuthRequest, res) => {
       ratePerHour: Number(existing.employee.ratePerHour),
       workingDays: workingDays ?? existing.workingDays,
       totalDaysPresent: calculatedDaysPresent,
-      holidays: holidays ?? existing.holidays,
-      holidayRate: holidayRate ?? Number(existing.holidayRate),
+      holidays: holidays !== undefined ? parseFloat(holidays) : Number(existing.holidays),
       overtimeHours: overtimeHours ?? Number(existing.overtimeHours),
       lateMinutes: lateMinutes ?? Number(existing.lateMinutes),
       mealAllowance: mealAllowance ?? Number(existing.mealAllowance),
@@ -194,8 +193,7 @@ router.put('/:id', authMiddleware, async (req: AuthRequest, res) => {
         dayOff: dayOff ?? existing.dayOff,
         absences: absences ?? existing.absences,
         totalDaysPresent: calculatedDaysPresent,
-        holidays: holidays ?? existing.holidays,
-        holidayRate: holidayRate ?? existing.holidayRate,
+        holidays: holidays !== undefined ? parseFloat(holidays) : Number(existing.holidays),
         overtimeHours: overtimeHours ?? existing.overtimeHours,
         lateMinutes: lateMinutes ?? existing.lateMinutes,
         mealAllowance: mealAllowance ?? existing.mealAllowance,
@@ -246,14 +244,16 @@ router.post('/:id/calculate', authMiddleware, async (req: AuthRequest, res) => {
     const totalIncentives = payroll.incentives.reduce((sum, i) => sum + Number(i.amount), 0);
     const totalDeductions = payroll.deductions.reduce((sum, d) => sum + Number(d.amount), 0);
 
+    // Recalculate totalDaysPresent: Working Days - Rest Days (dayOff) - Absences
+    const calculatedDaysPresent = payroll.workingDays - payroll.dayOff - payroll.absences;
+
     const calculation = calculatePayroll({
       salary: Number(payroll.employee.salary),
       ratePerDay: Number(payroll.employee.ratePerDay),
       ratePerHour: Number(payroll.employee.ratePerHour),
       workingDays: payroll.workingDays,
-      totalDaysPresent: payroll.totalDaysPresent,
-      holidays: payroll.holidays,
-      holidayRate: Number(payroll.holidayRate),
+      totalDaysPresent: calculatedDaysPresent,
+      holidays: Number(payroll.holidays),
       overtimeHours: Number(payroll.overtimeHours),
       lateMinutes: Number(payroll.lateMinutes),
       mealAllowance: Number(payroll.mealAllowance),
@@ -266,6 +266,7 @@ router.post('/:id/calculate', authMiddleware, async (req: AuthRequest, res) => {
     const updated = await prisma.payrollPeriod.update({
       where: { id: parseInt(id) },
       data: {
+        totalDaysPresent: calculatedDaysPresent, // Update with recalculated value
         basicPay: calculation.basicPay,
         holidayPay: calculation.holidayPay,
         overtimePay: calculation.overtimePay,

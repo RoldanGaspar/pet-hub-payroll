@@ -114,7 +114,7 @@ router.post('/bulk', authMiddleware, async (req: AuthRequest, res) => {
   }
 });
 
-// Apply fixed deductions to payroll
+// Apply fixed deductions to payroll (divided by deductionDivisor)
 router.post('/apply-fixed/:payrollId', authMiddleware, async (req: AuthRequest, res) => {
   try {
     const payrollId = req.params.payrollId as string;
@@ -132,22 +132,26 @@ router.post('/apply-fixed/:payrollId', authMiddleware, async (req: AuthRequest, 
       return res.status(404).json({ error: 'Payroll not found' });
     }
 
-    const existingDeductions = await prisma.deduction.findMany({
+    const divisor = payroll.deductionDivisor || 2;
+
+    // Delete existing deductions and replace with employee's fixed deductions ÷ divisor
+    await prisma.deduction.deleteMany({
       where: { payrollId: parseInt(payrollId) },
     });
 
-    const existingTypes = existingDeductions.map((d) => d.type);
-
+    // Create deductions from employee's fixed deductions, divided by divisor
     for (const fd of payroll.employee.fixedDeductions) {
-      if (!existingTypes.includes(fd.type)) {
-        await prisma.deduction.create({
-          data: {
-            payrollId: parseInt(payrollId),
-            type: fd.type,
-            amount: fd.amount,
-          },
-        });
-      }
+      const dividedAmount = Number(fd.amount) / divisor;
+      // Round to 2 decimal places
+      const roundedAmount = Math.round(dividedAmount * 100) / 100;
+      
+      await prisma.deduction.create({
+        data: {
+          payrollId: parseInt(payrollId),
+          type: fd.type,
+          amount: roundedAmount,
+        },
+      });
     }
 
     // Recalculate totals
@@ -165,6 +169,28 @@ router.post('/apply-fixed/:payrollId', authMiddleware, async (req: AuthRequest, 
     return res.json(updated);
   } catch (error) {
     console.error('Apply fixed deductions error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update deduction divisor for a payroll
+router.put('/divisor/:payrollId', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const payrollId = req.params.payrollId as string;
+    const { divisor } = req.body;
+
+    if (!divisor || divisor < 1) {
+      return res.status(400).json({ error: 'Divisor must be at least 1' });
+    }
+
+    const payroll = await prisma.payrollPeriod.update({
+      where: { id: parseInt(payrollId) },
+      data: { deductionDivisor: divisor },
+    });
+
+    return res.json(payroll);
+  } catch (error) {
+    console.error('Update divisor error:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

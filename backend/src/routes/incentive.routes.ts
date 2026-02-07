@@ -6,6 +6,8 @@ import {
   getIncentiveTypesForPosition,
   calculateIncentive,
   FormulaType,
+  isSharedIncentiveType,
+  getDivisionPositionsForType,
 } from '../utils/payrollCalculations';
 import { PositionType } from '@prisma/client';
 
@@ -132,6 +134,57 @@ router.post('/config/init', authMiddleware, requireRole(['ADMIN']), async (req: 
   }
 });
 
+// Get eligible employee counts for shared incentive types in a branch
+// Returns the DIVISION count (how many people the total is divided by)
+// Excludes employees marked as NOT INCLUDED
+router.get('/eligible-counts/:branchId', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const branchId = parseInt(req.params.branchId as string);
+
+    // Get all active employees in this branch
+    const employees = await prisma.employee.findMany({
+      where: { branchId, isActive: true },
+      select: { id: true, position: true },
+    });
+
+    // Fetch exclusions for these employees
+    const exclusions = await prisma.incentiveExclusion.findMany({
+      where: { employeeId: { in: employees.map((e) => e.id) } },
+    });
+
+    // Build exclusion map: employeeId -> Set of excluded incentive types
+    const exclusionMap = new Map<number, Set<string>>();
+    for (const excl of exclusions) {
+      if (!exclusionMap.has(excl.employeeId)) {
+        exclusionMap.set(excl.employeeId, new Set());
+      }
+      exclusionMap.get(excl.employeeId)!.add(excl.incentiveType);
+    }
+
+    // For each shared incentive type, count employees used for DIVISION
+    // (divisionPositions may be broader than who receives the incentive)
+    const sharedTypes = DEFAULT_INCENTIVE_CONFIG.filter((c) => c.isShared);
+    const eligibleCounts: Record<string, number> = {};
+
+    for (const config of sharedTypes) {
+      // Use divisionPositions if set, otherwise fall back to positions
+      const divisionPositions = config.divisionPositions || config.positions;
+      // Exclude employees marked as NOT INCLUDED
+      const count = employees.filter((e) => {
+        const isEligible = divisionPositions.includes(e.position);
+        const isExcluded = exclusionMap.get(e.id)?.has(config.type);
+        return isEligible && !isExcluded;
+      }).length;
+      eligibleCounts[config.type] = count;
+    }
+
+    return res.json(eligibleCounts);
+  } catch (error) {
+    console.error('Get eligible counts error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ============== INCENTIVE CRUD ENDPOINTS ==============
 
 // Get incentives for a payroll
@@ -238,7 +291,7 @@ router.put('/payroll/:payrollId/bulk', authMiddleware, async (req: AuthRequest, 
     const payrollId = parseInt(req.params.payrollId as string);
     const { incentives } = req.body;
 
-    // Get payroll with employee to know their position
+    // Get payroll with employee to know their position and branch
     const payroll = await prisma.payrollPeriod.findUnique({
       where: { id: payrollId },
       include: { employee: true },
@@ -246,6 +299,39 @@ router.put('/payroll/:payrollId/bulk', authMiddleware, async (req: AuthRequest, 
 
     if (!payroll) {
       return res.status(404).json({ error: 'Payroll not found' });
+    }
+
+    // Get all active employees in the same branch (for shared incentive types)
+    const branchEmployees = await prisma.employee.findMany({
+      where: { branchId: payroll.employee.branchId, isActive: true },
+      select: { id: true, position: true },
+    });
+
+    // Fetch exclusions for branch employees
+    const exclusions = await prisma.incentiveExclusion.findMany({
+      where: { employeeId: { in: branchEmployees.map((e) => e.id) } },
+    });
+
+    // Build exclusion map
+    const exclusionMap = new Map<number, Set<string>>();
+    for (const excl of exclusions) {
+      if (!exclusionMap.has(excl.employeeId)) {
+        exclusionMap.set(excl.employeeId, new Set());
+      }
+      exclusionMap.get(excl.employeeId)!.add(excl.incentiveType);
+    }
+
+    // Pre-compute eligible counts for shared types (excluding NOT INCLUDED)
+    const eligibleCountsMap: Record<string, number> = {};
+    for (const inc of incentives || []) {
+      if (isSharedIncentiveType(inc.type)) {
+        const eligiblePositions = getDivisionPositionsForType(inc.type);
+        eligibleCountsMap[inc.type] = branchEmployees.filter((e) => {
+          const isEligible = eligiblePositions.includes(e.position);
+          const isExcluded = exclusionMap.get(e.id)?.has(inc.type);
+          return isEligible && !isExcluded;
+        }).length;
+      }
     }
 
     // Delete existing incentives
@@ -277,12 +363,21 @@ router.put('/payroll/:payrollId/bulk', authMiddleware, async (req: AuthRequest, 
       const effectiveRate = inc.rate ?? config?.rate ?? 0;
       const formulaType = config?.formulaType || 'COUNT_MULTIPLY';
 
+      // For shared types, pass numEligible for division
+      // GROOMING and NURSING are NOT divided when entered individually
+      // They are only shared when distributed from the incentive sheet (daily totals)
+      const shouldDivide = isSharedIncentiveType(inc.type) && inc.type !== 'GROOMING' && inc.type !== 'NURSING';
+      const numEligible = shouldDivide
+        ? eligibleCountsMap[inc.type] || 1
+        : undefined;
+
       const result = calculateIncentive({
         type: inc.type,
         count: inc.count || 0,
         inputValue: inc.inputValue || 0,
         rate: effectiveRate,
         formulaType: formulaType as FormulaType,
+        numEligible,
       });
 
       // Only add if there's actual input
@@ -434,9 +529,12 @@ async function recalculatePayrollTotals(payrollId: number) {
   const ratePerDay = Number(payroll.employee.ratePerDay);
   const ratePerHour = Number(payroll.employee.ratePerHour);
 
-  const basicPay = ratePerDay * payroll.totalDaysPresent;
-  const holidayPay = ratePerDay * Number(payroll.holidayRate) * payroll.holidays;
-  const overtimePay = ratePerHour * 1.25 * Number(payroll.overtimeHours);
+  // Recalculate totalDaysPresent: Working Days - Rest Days (dayOff) - Absences
+  const calculatedDaysPresent = payroll.workingDays - payroll.dayOff - payroll.absences;
+
+  const basicPay = ratePerDay * calculatedDaysPresent;
+  const holidayPay = Number(payroll.holidays) * ratePerDay;
+  const overtimePay = ratePerHour * Number(payroll.overtimeHours);
   const lateDeduction = ratePerHour * (Number(payroll.lateMinutes) / 60);
 
   const grossPay =
@@ -453,6 +551,7 @@ async function recalculatePayrollTotals(payrollId: number) {
   await prisma.payrollPeriod.update({
     where: { id: payrollId },
     data: {
+      totalDaysPresent: calculatedDaysPresent, // Update with recalculated value
       totalIncentives,
       totalDeductions,
       basicPay: Math.round(basicPay * 100) / 100,

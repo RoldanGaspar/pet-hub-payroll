@@ -8,6 +8,7 @@ import branchRoutes from './routes/branch.routes';
 import employeeRoutes from './routes/employee.routes';
 import payrollRoutes from './routes/payroll.routes';
 import incentiveRoutes from './routes/incentive.routes';
+import incentiveSheetRoutes from './routes/incentive-sheet.routes';
 import deductionRoutes from './routes/deduction.routes';
 import cashAdvanceRoutes from './routes/cashAdvance.routes';
 import dashboardRoutes from './routes/dashboard.routes';
@@ -66,6 +67,7 @@ app.use('/api/branches', branchRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/payroll', payrollRoutes);
 app.use('/api/incentives', incentiveRoutes);
+app.use('/api/incentive-sheets', incentiveSheetRoutes);
 app.use('/api/deductions', deductionRoutes);
 app.use('/api/cash-advances', cashAdvanceRoutes);
 app.use('/api/dashboard', dashboardRoutes);
@@ -121,6 +123,25 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
   });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM signal received: closing HTTP server');
+  server.close(async () => {
+    console.log('HTTP server closed');
+    await prisma.$disconnect();
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT signal received: closing HTTP server');
+  server.close(async () => {
+    console.log('HTTP server closed');
+    await prisma.$disconnect();
+    process.exit(0);
+  });
 });

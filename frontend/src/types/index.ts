@@ -65,8 +65,8 @@ export interface PayrollPeriod {
   dayOff: number;
   absences: number;
   totalDaysPresent: number;
-  holidays: number;
-  holidayRate: number;
+  holidays: number; // Decimal - No. of Holidays (e.g., 1.30)
+  deductionDivisor: number; // Divisor for fixed deductions (default 2 = semi-monthly)
   overtimeHours: number;
   lateMinutes: number;
   mealAllowance: number;
@@ -106,7 +106,49 @@ export interface IncentiveConfig {
   positions: string[];
   isActive: boolean;
   sortOrder: number;
+  isShared?: boolean; // If true, total is divided among eligible employees
 }
+
+export type DeductionCategory = 'GOVERNMENT' | 'INSURANCE' | 'LOANS' | 'OTHERS';
+
+// Incentive Sheet types (branch-level daily input grid)
+export interface IncentiveSheet {
+  id: number;
+  branchId: number;
+  startDate: string;
+  endDate: string;
+  isDistributed: boolean;
+}
+
+export interface IncentiveSheetResponse {
+  sheet: IncentiveSheet;
+  days: string[];
+  grid: Record<string, Record<string, number>>; // grid[type][date] = value
+  totals: Record<string, number>;
+  distributionPreview: DistributionPreviewItem[];
+  employees: { id: number; position: PositionType; name: string }[];
+}
+
+export interface DistributionPreviewItem {
+  configKey: string;
+  label: string;
+  sourceType: string;
+  total: number;
+  rate: number;
+  numEligible: number;
+  totalPay: number;
+  perPerson: number;
+  eligibleNames: string[];
+}
+
+export const SHARED_INCENTIVE_TYPES = ['GROOMING', 'SURGERY', 'EMERGENCY', 'CONFINEMENT'] as const;
+
+export const SHARED_INCENTIVE_LABELS: Record<string, string> = {
+  GROOMING: 'Grooming',
+  SURGERY: 'Surgery',
+  EMERGENCY: 'Emergency (P)',
+  CONFINEMENT: 'Confinement',
+};
 
 export interface IncentiveInput {
   type: string;
@@ -127,6 +169,7 @@ export interface FixedDeduction {
   id: number;
   employeeId: number;
   type: string;
+  category: DeductionCategory;
   amount: number;
   isActive: boolean;
 }
@@ -197,7 +240,21 @@ export const INCENTIVE_TYPES = {
   TRADING: ['TK_100', 'TK_90', 'MEDS_100', 'MEDS_90'],
 };
 
-export const DEDUCTION_TYPES = ['SSS', 'PHILHEALTH', 'PAGIBIG', 'WTAX', 'INSURANCE', 'LATE', 'CASH_ADVANCE', 'LOANS', 'OTHERS'];
+export const DEDUCTION_TYPES = ['SSS', 'PHILHEALTH', 'PAGIBIG', 'WTAX', 'SUNLIFE', 'BPI_AIA', 'INSURANCE_OTHER', 'SSS_LOAN', 'PAGIBIG_LOAN', 'COMPANY_LOAN', 'UNIFORM', 'CASH_ADVANCE', 'LATE', 'OTHERS'];
+
+export const DEDUCTION_CATEGORIES: Record<DeductionCategory, string> = {
+  GOVERNMENT: 'Government Benefits',
+  INSURANCE: 'Insurance',
+  LOANS: 'Loans',
+  OTHERS: 'Others',
+};
+
+export const DEDUCTION_BY_CATEGORY: Record<DeductionCategory, string[]> = {
+  GOVERNMENT: ['SSS', 'PHILHEALTH', 'PAGIBIG', 'WTAX'],
+  INSURANCE: ['SUNLIFE', 'BPI_AIA', 'INSURANCE_OTHER'],
+  LOANS: ['SSS_LOAN', 'PAGIBIG_LOAN', 'COMPANY_LOAN'],
+  OTHERS: ['UNIFORM', 'CASH_ADVANCE', 'LATE', 'OTHERS'],
+};
 
 export const INCENTIVE_LABELS: Record<string, string> = {
   CBC: 'CBC',
@@ -218,7 +275,7 @@ export const INCENTIVE_LABELS: Record<string, string> = {
 };
 
 // Default incentive rates for display
-export const DEFAULT_INCENTIVE_RATES: Record<string, { rate: number; formulaType: 'COUNT_MULTIPLY' | 'PERCENT' }> = {
+export const DEFAULT_INCENTIVE_RATES: Record<string, { rate: number; formulaType: 'COUNT_MULTIPLY' | 'PERCENT'; isShared?: boolean }> = {
   CBC: { rate: 50, formulaType: 'COUNT_MULTIPLY' },
   BLOOD_CHEM: { rate: 100, formulaType: 'COUNT_MULTIPLY' },
   ULTRASOUND: { rate: 100, formulaType: 'COUNT_MULTIPLY' },
@@ -226,23 +283,29 @@ export const DEFAULT_INCENTIVE_RATES: Record<string, { rate: number; formulaType
   XRAY: { rate: 100, formulaType: 'COUNT_MULTIPLY' },
   SURGERY: { rate: 0.10, formulaType: 'PERCENT' },
   EMERGENCY: { rate: 0.40, formulaType: 'PERCENT' },
-  CONFINEMENT_VET: { rate: 55, formulaType: 'COUNT_MULTIPLY' },
-  CONFINEMENT_ASST: { rate: 45, formulaType: 'COUNT_MULTIPLY' },
-  GROOMING: { rate: 75, formulaType: 'COUNT_MULTIPLY' },
-  NURSING: { rate: 80, formulaType: 'COUNT_MULTIPLY' },
+  CONFINEMENT_VET: { rate: 55, formulaType: 'COUNT_MULTIPLY', isShared: true },
+  CONFINEMENT_ASST: { rate: 45, formulaType: 'COUNT_MULTIPLY', isShared: true },
+  GROOMING: { rate: 75, formulaType: 'COUNT_MULTIPLY', isShared: true },
+  NURSING: { rate: 80, formulaType: 'COUNT_MULTIPLY', isShared: true },
 };
 
 export const DEDUCTION_LABELS: Record<string, string> = {
+  // Government Benefits
   SSS: 'SSS',
   PHILHEALTH: 'PhilHealth',
   PAGIBIG: 'Pag-IBIG',
   WTAX: 'W/Tax',
-  INSURANCE: 'Insurance',
-  LATE: 'Late',
-  CASH_ADVANCE: 'Cash Advance',
-  LOANS: 'Loans',
-  OTHERS: 'Others',
+  // Insurance
   SUNLIFE: 'Sunlife',
   BPI_AIA: 'BPI AIA',
+  INSURANCE_OTHER: 'Other Insurance',
+  // Loans
+  SSS_LOAN: 'SSS Loan',
+  PAGIBIG_LOAN: 'Pag-IBIG Loan',
+  COMPANY_LOAN: 'Company Loan',
+  // Others
   UNIFORM: 'Uniform',
+  CASH_ADVANCE: 'Cash Advance',
+  LATE: 'Late',
+  OTHERS: 'Others',
 };

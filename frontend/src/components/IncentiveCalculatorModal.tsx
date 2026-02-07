@@ -22,6 +22,7 @@ export default function IncentiveCalculatorModal({ payroll, onClose }: Incentive
   const [isSaving, setIsSaving] = useState(false);
 
   const position = payroll.employee?.position || 'STAFF';
+  const branchId = payroll.employee?.branchId || 0;
   const ratePerDay = payroll.employee?.ratePerDay || 0;
   const ratePerHour = payroll.employee?.ratePerHour || 0;
 
@@ -29,6 +30,13 @@ export default function IncentiveCalculatorModal({ payroll, onClose }: Incentive
   const { data: configs } = useQuery({
     queryKey: ['incentive-config', position],
     queryFn: () => incentiveApi.getConfigForPosition(position).then((res) => res.data),
+  });
+
+  // Get eligible employee counts for shared incentive types in this branch
+  const { data: eligibleCounts } = useQuery({
+    queryKey: ['eligible-counts', branchId],
+    queryFn: () => incentiveApi.getEligibleCounts(branchId).then((res) => res.data),
+    enabled: branchId > 0,
   });
 
   // Initialize inputs from existing incentives or configs
@@ -60,13 +68,28 @@ export default function IncentiveCalculatorModal({ payroll, onClose }: Incentive
 
       const rate = config.rate || DEFAULT_INCENTIVE_RATES[input.type]?.rate || 0;
       const formulaType = config.formulaType || DEFAULT_INCENTIVE_RATES[input.type]?.formulaType || 'COUNT_MULTIPLY';
+      const isShared = config.isShared || DEFAULT_INCENTIVE_RATES[input.type]?.isShared || false;
+      
+      // GROOMING and NURSING are NOT divided when entered individually
+      // They are only shared when distributed from the incentive sheet (daily totals)
+      // When entered individually, each employee gets the full amount based on their own count
+      const shouldDivide = isShared && input.type !== 'GROOMING' && input.type !== 'NURSING';
+      const numEligible = shouldDivide && eligibleCounts ? (eligibleCounts[input.type] || 1) : 0;
 
       let amount = 0;
       let formula = '';
 
       if (formulaType === 'COUNT_MULTIPLY') {
-        amount = input.count * rate;
-        formula = `${input.count} × ₱${rate.toLocaleString()} = ₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
+        const totalPay = input.count * rate;
+        if (shouldDivide && numEligible > 1) {
+          // Shared type: divide among eligible employees (only for CONFINEMENT, SURGERY, EMERGENCY)
+          amount = totalPay / numEligible;
+          formula = `(${input.count} × ₱${rate.toLocaleString()}) ÷ ${numEligible} = ₱${(Math.round(amount * 100) / 100).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
+        } else {
+          // Individual entry: full amount (GROOMING, NURSING, and all non-shared types)
+          amount = totalPay;
+          formula = `${input.count} × ₱${rate.toLocaleString()} = ₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
+        }
         totalCount += input.count;
       } else if (formulaType === 'PERCENT') {
         amount = input.inputValue * rate;
@@ -83,7 +106,9 @@ export default function IncentiveCalculatorModal({ payroll, onClose }: Incentive
         inputValue: input.inputValue,
         rate,
         formulaType,
-        amount,
+        isShared,
+        numEligible: shouldDivide ? numEligible : 0, // Only show numEligible if actually dividing
+        amount: Math.round(amount * 100) / 100,
         formula,
         description: config.description,
       };
@@ -94,7 +119,7 @@ export default function IncentiveCalculatorModal({ payroll, onClose }: Incentive
       totalCount,
       totalAmount: Math.round(totalAmount * 100) / 100,
     };
-  }, [inputs, configs]);
+  }, [inputs, configs, eligibleCounts]);
 
   // Update input value
   const handleInputChange = (type: string, field: 'count' | 'inputValue', value: string) => {
@@ -199,7 +224,14 @@ export default function IncentiveCalculatorModal({ payroll, onClose }: Incentive
                         <tr key={result.type} className="group">
                           <td className="py-3">
                             <div>
-                              <p className="font-medium text-slate-900">{result.name}</p>
+                              <p className="font-medium text-slate-900">
+                                {result.name}
+                                {result.isShared && result.numEligible > 1 && result.type !== 'GROOMING' && result.type !== 'NURSING' && (
+                                  <span className="ml-1 text-xs font-normal text-amber-600">
+                                    (÷{result.numEligible} eligible)
+                                  </span>
+                                )}
+                              </p>
                               <p className="text-xs text-slate-500">{result.description}</p>
                             </div>
                           </td>

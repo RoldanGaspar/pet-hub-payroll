@@ -1,18 +1,128 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Calculator, FileText, ChevronDown, ChevronUp, Edit3 } from 'lucide-react';
+import { Plus, Calculator, FileText, ChevronDown, ChevronUp, Edit3, Table2, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Header from '../components/layout/Header';
 import IncentiveCalculatorModal from '../components/IncentiveCalculatorModal';
+import IncentiveSheetModal from '../components/IncentiveSheetModal';
 import { payrollApi, branchApi, deductionApi } from '../utils/api';
-import { PayrollPeriod, Branch, STATUS_LABELS, POSITION_LABELS, INCENTIVE_LABELS, DEDUCTION_LABELS } from '../types';
+import { PayrollPeriod, Branch, STATUS_LABELS, POSITION_LABELS, INCENTIVE_LABELS } from '../types';
 import { formatCurrency, formatDateRange, getStatusColor } from '../utils/helpers';
+
+// Fixed deduction types to always show (in order)
+const FIXED_DEDUCTION_TYPES = [
+  { type: 'WTAX', name: 'W/Tax' },
+  { type: 'SSS', name: 'SSS' },
+  { type: 'PAGIBIG', name: 'Pag-IBIG' },
+  { type: 'PHILHEALTH', name: 'PhilHealth' },
+  { type: 'SUNLIFE', name: 'Sunlife' },
+  { type: 'UNIFORM', name: 'Uniform' },
+];
+
+// Editable Deductions Component
+function EditableDeductions({ 
+  payroll, 
+  onUpdate 
+}: { 
+  payroll: PayrollPeriod; 
+  onUpdate: () => void;
+}) {
+  const [deductionValues, setDeductionValues] = useState<Record<string, string>>({});
+  const [isSaving, setIsSaving] = useState(false);
+  const queryClient = useQueryClient();
+
+  // Initialize values from existing deductions
+  useEffect(() => {
+    const values: Record<string, string> = {};
+    FIXED_DEDUCTION_TYPES.forEach(({ type }) => {
+      const existing = payroll.deductions?.find((d) => d.type === type);
+      values[type] = existing ? String(existing.amount) : '0';
+    });
+    setDeductionValues(values);
+  }, [payroll.deductions]);
+
+  const handleValueChange = (type: string, value: string) => {
+    setDeductionValues((prev) => ({ ...prev, [type]: value }));
+  };
+
+  const handleSave = async () => {
+    if (isSaving) return;
+    
+    setIsSaving(true);
+    try {
+      // Build deductions array from current values
+      const deductions = FIXED_DEDUCTION_TYPES.map(({ type }) => ({
+        type,
+        amount: parseFloat(deductionValues[type]) || 0,
+      })).filter((d) => d.amount > 0);
+
+      await deductionApi.bulkUpdate(payroll.id, deductions);
+      queryClient.invalidateQueries({ queryKey: ['payrolls'] });
+      onUpdate();
+    } catch (error) {
+      console.error('Failed to save deductions:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Calculate total
+  const total = FIXED_DEDUCTION_TYPES.reduce(
+    (sum, { type }) => sum + (parseFloat(deductionValues[type]) || 0),
+    0
+  );
+
+  // Select all text on focus for easy replacement
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.target.select();
+  };
+
+  return (
+    <div className="space-y-3">
+      {FIXED_DEDUCTION_TYPES.map(({ type, name }) => (
+        <div key={type} className="flex items-center justify-between bg-white rounded border p-2">
+          <label className="text-sm font-medium text-slate-700 w-24">{name}</label>
+          <div className="flex items-center gap-1">
+            <span className="text-slate-400 text-sm">₱</span>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={deductionValues[type] === '0' ? '' : deductionValues[type] || ''}
+              onChange={(e) => handleValueChange(type, e.target.value)}
+              onFocus={handleFocus}
+              onBlur={handleSave}
+              placeholder="0.00"
+              className="input w-28 text-right text-sm py-1"
+            />
+          </div>
+        </div>
+      ))}
+      
+      {/* Total */}
+      <div className="flex items-center justify-between bg-red-50 rounded border border-red-200 p-3 mt-4">
+        <span className="font-semibold text-red-800">TOTAL</span>
+        <span className="font-bold text-red-600 text-lg">{formatCurrency(total)}</span>
+      </div>
+      
+      {isSaving && (
+        <p className="text-xs text-slate-500 text-center">Saving...</p>
+      )}
+    </div>
+  );
+}
 
 export default function Payroll() {
   const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [expandedPayroll, setExpandedPayroll] = useState<number | null>(null);
   const [incentiveModalPayroll, setIncentiveModalPayroll] = useState<PayrollPeriod | null>(null);
+  const [incentiveSheetInfo, setIncentiveSheetInfo] = useState<{
+    branchId: number;
+    branchName: string;
+    startDate: string;
+    endDate: string;
+  } | null>(null);
   const [createForm, setCreateForm] = useState({
     branchId: '',
     startDate: '',
@@ -61,6 +171,24 @@ export default function Payroll() {
       queryClient.invalidateQueries({ queryKey: ['payrolls'] });
     },
   });
+
+  const deletePayrollMutation = useMutation({
+    mutationFn: (id: number) => payrollApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payrolls'] });
+      // Close expanded view if the deleted payroll was expanded
+      setExpandedPayroll(null);
+    },
+  });
+
+  const handleDeletePayroll = (payroll: PayrollPeriod) => {
+    const employeeName = payroll.employee?.name || 'this employee';
+    const dateRange = formatDateRange(payroll.startDate, payroll.endDate);
+    
+    if (window.confirm(`Are you sure you want to delete the payroll period for ${employeeName} (${dateRange})?\n\nThis action cannot be undone.`)) {
+      deletePayrollMutation.mutate(payroll.id);
+    }
+  };
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,12 +258,35 @@ export default function Payroll() {
             {Object.entries(groupedPayrolls).map(([key, group]: [string, any]) => (
               <div key={key} className="card">
                 <div className="card-header">
-                  <h3 className="font-semibold text-slate-900">
-                    {formatDateRange(group.startDate, group.endDate)}
-                  </h3>
-                  <p className="text-sm text-slate-500 mt-1">
-                    {group.payrolls.length} employees
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold text-slate-900">
+                        {formatDateRange(group.startDate, group.endDate)}
+                      </h3>
+                      <p className="text-sm text-slate-500 mt-1">
+                        {group.payrolls.length} employees
+                      </p>
+                    </div>
+                    {/* Branch Incentive Sheet Button */}
+                    {group.payrolls[0]?.employee?.branch && (
+                      <button
+                        onClick={() => {
+                          const p = group.payrolls[0];
+                          setIncentiveSheetInfo({
+                            branchId: p.employee!.branch!.id,
+                            branchName: p.employee!.branch!.name,
+                            startDate: p.startDate.split('T')[0],
+                            endDate: p.endDate.split('T')[0],
+                          });
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors"
+                        title="Open branch-level daily incentive input sheet"
+                      >
+                        <Table2 className="h-4 w-4" />
+                        Branch Incentive Sheet
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="table-container">
                   <table className="table">
@@ -147,6 +298,8 @@ export default function Payroll() {
                         <th>Rate/Hour</th>
                         <th>Days Present</th>
                         <th>Basic Pay</th>
+                        <th>Holiday Pay</th>
+                        <th>OT Pay</th>
                         <th>Incentives</th>
                         <th>Deductions</th>
                         <th>Net Pay</th>
@@ -184,6 +337,22 @@ export default function Payroll() {
                               <span className="text-slate-400"> / {payroll.workingDays}</span>
                             </td>
                             <td className="font-medium">{formatCurrency(payroll.basicPay)}</td>
+                            <td>
+                              <span className="font-medium text-blue-600">{formatCurrency(payroll.holidayPay)}</span>
+                              {Number(payroll.holidays) > 0 && (
+                                <p className="text-[10px] text-slate-400">
+                                  {Number(payroll.holidays)} × {formatCurrency(payroll.employee?.ratePerDay || 0)}
+                                </p>
+                              )}
+                            </td>
+                            <td>
+                              <span className="font-medium text-orange-600">{formatCurrency(payroll.overtimePay)}</span>
+                              {Number(payroll.overtimeHours) > 0 && (
+                                <p className="text-[10px] text-slate-400">
+                                  {Number(payroll.overtimeHours)}h × {formatCurrency(payroll.employee?.ratePerHour || 0)}
+                                </p>
+                              )}
+                            </td>
                             <td className="text-emerald-600 font-medium">{formatCurrency(payroll.totalIncentives)}</td>
                             <td className="text-red-600 font-medium">{formatCurrency(payroll.totalDeductions)}</td>
                             <td className="font-bold text-primary-600">{formatCurrency(payroll.netPay)}</td>
@@ -215,12 +384,23 @@ export default function Payroll() {
                                 >
                                   <FileText className="h-4 w-4" />
                                 </Link>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeletePayroll(payroll);
+                                  }}
+                                  className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                                  title="Delete Payroll Period"
+                                  disabled={deletePayrollMutation.isPending}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
                               </div>
                             </td>
                           </tr>
                           {expandedPayroll === payroll.id && (
                             <tr className="bg-slate-50">
-                              <td colSpan={11} className="p-6">
+                              <td colSpan={13} className="p-6">
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                   {/* Attendance & Work */}
                                   <div className="space-y-4">
@@ -257,20 +437,16 @@ export default function Payroll() {
                                         <label className="text-xs text-slate-500">Holidays</label>
                                         <input
                                           type="number"
+                                          step="0.01"
                                           defaultValue={payroll.holidays}
                                           onBlur={(e) => handleFieldUpdate(payroll.id, 'holidays', e.target.value)}
                                           className="input text-sm"
                                         />
-                                      </div>
-                                      <div>
-                                        <label className="text-xs text-slate-500">Holiday Rate</label>
-                                        <input
-                                          type="number"
-                                          step="0.1"
-                                          defaultValue={payroll.holidayRate}
-                                          onBlur={(e) => handleFieldUpdate(payroll.id, 'holidayRate', e.target.value)}
-                                          className="input text-sm"
-                                        />
+                                        {Number(payroll.holidays) > 0 && (
+                                          <p className="text-[10px] text-blue-600 mt-1">
+                                            = {formatCurrency(payroll.holidayPay)}
+                                          </p>
+                                        )}
                                       </div>
                                       <div>
                                         <label className="text-xs text-slate-500">OT Hours</label>
@@ -281,6 +457,11 @@ export default function Payroll() {
                                           onBlur={(e) => handleFieldUpdate(payroll.id, 'overtimeHours', e.target.value)}
                                           className="input text-sm"
                                         />
+                                        {Number(payroll.overtimeHours) > 0 && (
+                                          <p className="text-[10px] text-blue-600 mt-1">
+                                            = {formatCurrency(payroll.overtimePay)}
+                                          </p>
+                                        )}
                                       </div>
                                       <div>
                                         <label className="text-xs text-slate-500">Late (mins)</label>
@@ -346,31 +527,59 @@ export default function Payroll() {
                                     </div>
                                   </div>
 
-                                  {/* Deductions */}
+                                  {/* Deductions - Editable */}
                                   <div className="space-y-4">
-                                    <div className="flex items-center justify-between">
-                                      <h4 className="font-semibold text-slate-900">Deductions</h4>
-                                      <span className="text-sm font-medium text-red-600">
-                                        {formatCurrency(payroll.totalDeductions)}
+                                    <h4 className="font-semibold text-slate-900">
+                                      Fixed Deductions
+                                      <span className="text-xs font-normal text-slate-500 ml-2">
+                                        (Government, Insurance, Others)
+                                      </span>
+                                    </h4>
+                                    
+                                    {/* Deduction Divisor */}
+                                    <div className="flex items-center gap-2 bg-amber-50 rounded border border-amber-200 p-2">
+                                      <label className="text-xs font-medium text-amber-800 whitespace-nowrap">Divide by:</label>
+                                      <select
+                                        defaultValue={payroll.deductionDivisor || 2}
+                                        onChange={(e) => {
+                                          const newDivisor = parseInt(e.target.value);
+                                          deductionApi.updateDivisor(payroll.id, newDivisor).then(() => {
+                                            queryClient.invalidateQueries({ queryKey: ['payrolls'] });
+                                          });
+                                        }}
+                                        className="input text-sm py-1 w-16"
+                                      >
+                                        <option value="1">1</option>
+                                        <option value="2">2</option>
+                                        <option value="3">3</option>
+                                        <option value="4">4</option>
+                                      </select>
+                                      <span className="text-xs text-amber-700">
+                                        {payroll.deductionDivisor === 1 ? '(Monthly)' : 
+                                         payroll.deductionDivisor === 2 || !payroll.deductionDivisor ? '(Semi-monthly)' : 
+                                         payroll.deductionDivisor === 4 ? '(Weekly)' : ''}
                                       </span>
                                     </div>
-                                    <div className="space-y-2 max-h-48 overflow-y-auto">
-                                      {payroll.deductions?.map((ded) => (
-                                        <div key={ded.id} className="flex items-center justify-between text-sm p-2 bg-white rounded border">
-                                          <span>{DEDUCTION_LABELS[ded.type] || ded.type}</span>
-                                          <span className="font-medium text-red-600">{formatCurrency(ded.amount)}</span>
-                                        </div>
-                                      ))}
-                                      {(!payroll.deductions || payroll.deductions.length === 0) && (
-                                        <p className="text-sm text-slate-500 text-center py-4">No deductions</p>
-                                      )}
-                                    </div>
+
+                                    <EditableDeductions 
+                                      payroll={payroll} 
+                                      onUpdate={() => {}} 
+                                    />
                                     <button
-                                      onClick={() => applyFixedDeductionsMutation.mutate(payroll.id)}
+                                      onClick={() => {
+                                        const divisor = payroll.deductionDivisor || 2;
+                                        if (window.confirm(`This will load the employee's fixed deductions ÷ ${divisor} into this payroll. Continue?`)) {
+                                          applyFixedDeductionsMutation.mutate(payroll.id);
+                                        }
+                                      }}
                                       className="btn-secondary w-full text-sm"
+                                      title="Load deductions from Employees page settings, divided by divisor"
                                     >
-                                      Apply Fixed Deductions
+                                      Load Fixed Deductions ÷ {payroll.deductionDivisor || 2}
                                     </button>
+                                    <p className="text-xs text-slate-400 text-center">
+                                      Loads employee's full deductions ÷ {payroll.deductionDivisor || 2} (semi-monthly)
+                                    </p>
                                   </div>
                                 </div>
 
@@ -379,14 +588,23 @@ export default function Payroll() {
                                   <div className="text-center p-3 bg-white rounded-lg border">
                                     <p className="text-xs text-slate-500">Basic Pay</p>
                                     <p className="font-semibold">{formatCurrency(payroll.basicPay)}</p>
+                                    <p className="text-[10px] text-slate-400 mt-1">
+                                      {payroll.totalDaysPresent} days × {formatCurrency(payroll.employee?.ratePerDay || 0)}
+                                    </p>
                                   </div>
                                   <div className="text-center p-3 bg-white rounded-lg border">
                                     <p className="text-xs text-slate-500">Holiday Pay</p>
                                     <p className="font-semibold">{formatCurrency(payroll.holidayPay)}</p>
+                                    <p className="text-[10px] text-slate-400 mt-1">
+                                      {Number(payroll.holidays)} × {formatCurrency(payroll.employee?.ratePerDay || 0)}
+                                    </p>
                                   </div>
                                   <div className="text-center p-3 bg-white rounded-lg border">
                                     <p className="text-xs text-slate-500">Overtime Pay</p>
                                     <p className="font-semibold">{formatCurrency(payroll.overtimePay)}</p>
+                                    <p className="text-[10px] text-slate-400 mt-1">
+                                      {Number(payroll.overtimeHours)} hrs × {formatCurrency(payroll.employee?.ratePerHour || 0)}
+                                    </p>
                                   </div>
                                   <div className="text-center p-3 bg-white rounded-lg border">
                                     <p className="text-xs text-slate-500">Gross Pay</p>
@@ -494,11 +712,22 @@ export default function Payroll() {
           </div>
         )}
 
-        {/* Incentive Calculator Modal */}
+        {/* Incentive Calculator Modal (per employee) */}
         {incentiveModalPayroll && (
           <IncentiveCalculatorModal
             payroll={incentiveModalPayroll}
             onClose={() => setIncentiveModalPayroll(null)}
+          />
+        )}
+
+        {/* Branch Incentive Sheet Modal (daily grid) */}
+        {incentiveSheetInfo && (
+          <IncentiveSheetModal
+            branchId={incentiveSheetInfo.branchId}
+            branchName={incentiveSheetInfo.branchName}
+            startDate={incentiveSheetInfo.startDate}
+            endDate={incentiveSheetInfo.endDate}
+            onClose={() => setIncentiveSheetInfo(null)}
           />
         )}
       </div>

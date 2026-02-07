@@ -68,6 +68,7 @@ const DEFAULT_INCENTIVE_CONFIG = [
       PositionType.VETERINARY_ASSISTANT,
       PositionType.VETERINARY_NURSE,
       PositionType.STAFF,
+      PositionType.GROOMER,
     ],
     sortOrder: 6,
   },
@@ -83,6 +84,7 @@ const DEFAULT_INCENTIVE_CONFIG = [
       PositionType.VETERINARY_ASSISTANT,
       PositionType.VETERINARY_NURSE,
       PositionType.STAFF,
+      PositionType.GROOMER,
     ],
     sortOrder: 7,
   },
@@ -91,8 +93,8 @@ const DEFAULT_INCENTIVE_CONFIG = [
     name: 'Confinement (Vet)',
     rate: 55,
     formulaType: 'COUNT_MULTIPLY',
-    description: 'Units × ₱55 per confinement unit',
-    positions: [PositionType.RESIDENT_VETERINARIAN, PositionType.JUNIOR_VETERINARIAN],
+    description: 'Total units × ₱55 ÷ all vets (Resident Vets only receive)',
+    positions: [PositionType.RESIDENT_VETERINARIAN],
     sortOrder: 8,
   },
   {
@@ -106,6 +108,7 @@ const DEFAULT_INCENTIVE_CONFIG = [
       PositionType.GROOMER_VET_ASSISTANT,
       PositionType.VETERINARY_NURSE,
       PositionType.STAFF,
+      PositionType.GROOMER,
     ],
     sortOrder: 9,
   },
@@ -124,7 +127,7 @@ const DEFAULT_INCENTIVE_CONFIG = [
     rate: 80,
     formulaType: 'COUNT_MULTIPLY',
     description: 'Count × ₱80 per nursing case',
-    positions: [PositionType.VETERINARY_NURSE, PositionType.VETERINARY_ASSISTANT, PositionType.STAFF],
+    positions: [PositionType.VETERINARY_NURSE, PositionType.VETERINARY_ASSISTANT, PositionType.STAFF, PositionType.GROOMER],
     sortOrder: 11,
   },
 ];
@@ -293,27 +296,27 @@ async function main() {
       });
       console.log('Created employee:', employee.name);
 
-      // Add fixed deductions for each employee
-      const deductionTypes = ['SSS', 'PHILHEALTH', 'PAGIBIG'];
-      const deductionAmounts: Record<string, number> = {
-        SSS: emp.salary >= 20000 ? 500 : emp.salary >= 15000 ? 400 : 300,
-        PHILHEALTH: emp.salary >= 20000 ? 250 : emp.salary >= 15000 ? 200 : 150,
-        PAGIBIG: 100,
-      };
+      // Add fixed deductions for each employee (with category)
+      const deductionData = [
+        { type: 'SSS', category: 'GOVERNMENT', amount: emp.salary >= 20000 ? 500 : emp.salary >= 15000 ? 400 : 300 },
+        { type: 'PHILHEALTH', category: 'GOVERNMENT', amount: emp.salary >= 20000 ? 250 : emp.salary >= 15000 ? 200 : 150 },
+        { type: 'PAGIBIG', category: 'GOVERNMENT', amount: 100 },
+      ];
 
-      for (const type of deductionTypes) {
+      for (const ded of deductionData) {
         await prisma.fixedDeduction.upsert({
           where: {
             employeeId_type: {
               employeeId: employee.id,
-              type,
+              type: ded.type,
             },
           },
-          update: { amount: deductionAmounts[type] },
+          update: { amount: ded.amount, category: ded.category },
           create: {
             employeeId: employee.id,
-            type,
-            amount: deductionAmounts[type],
+            type: ded.type,
+            category: ded.category,
+            amount: ded.amount,
           },
         });
       }
