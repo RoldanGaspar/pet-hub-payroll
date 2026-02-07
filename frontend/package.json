@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview --port $PORT --host",
-    "start": "vite preview --port $PORT --host"
+    "start": "serve -s dist -l $PORT",
+    "start:preview": "vite preview --port $PORT --host"
   },
   "devDependencies": {
     "@types/react": "^19.2.8",
@@ -16,6 +17,7 @@
     "@vitejs/plugin-react": "^5.1.2",
     "autoprefixer": "^10.4.23",
     "postcss": "^8.5.6",
+    "serve": "^14.2.4",
     "tailwindcss": "^4.1.18",
     "typescript": "~5.9.3",
     "vite": "^7.2.4"
