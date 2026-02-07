@@ -37,8 +37,12 @@ openssl rand -base64 32
 
 #### Build & Deploy Settings:
 
-- **Build Command:** `npm install && npm run build && npx prisma generate`
+- **Build Command:** `npm install && npm run build && npx prisma generate && npm run db:push:force`
 - **Start Command:** `npm start`
+
+**Note:** The `db:push:force` command safely applies schema changes. The `--accept-data-loss` flag is safe here because:
+- `holidayRate` column is being removed (we no longer use it)
+- `holidays` is being converted from Integer to Decimal (PostgreSQL safely casts integers to decimals)
 
 ### 2. Frontend Service Setup
 
