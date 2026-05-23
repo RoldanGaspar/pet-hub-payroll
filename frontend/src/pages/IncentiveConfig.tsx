@@ -73,11 +73,13 @@ export default function IncentiveConfigPage() {
 
       <div className="p-6">
         {/* Info Banner */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 flex items-start gap-3">
-          <Info className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
-          <div>
-            <h4 className="font-medium text-blue-900">Incentive Rate Configuration</h4>
-            <p className="text-sm text-blue-700 mt-1">
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 rounded-lg p-5 mb-6 flex items-start gap-4 shadow-sm">
+          <div className="p-2 bg-blue-100 rounded-lg">
+            <Info className="h-5 w-5 text-blue-600 flex-shrink-0" />
+          </div>
+          <div className="flex-1">
+            <h4 className="font-bold text-blue-900 mb-1">Incentive Rate Configuration</h4>
+            <p className="text-sm text-blue-700 leading-relaxed">
               These rates are used to calculate employee incentives. Changes here will affect all future payroll calculations.
               The formulas show how each incentive type is calculated.
             </p>
@@ -107,10 +109,10 @@ export default function IncentiveConfigPage() {
           </div>
         ) : configs && configs.length > 0 ? (
           <div className="card">
-            <div className="card-header flex items-center justify-between">
+            <div className="card-header flex items-center justify-between bg-gradient-to-r from-slate-50 to-white">
               <div>
-                <h3 className="font-semibold text-slate-900">Incentive Rates</h3>
-                <p className="text-sm text-slate-500 mt-1">Click on a rate to edit</p>
+                <h3 className="font-bold text-lg text-slate-900">Incentive Rates</h3>
+                <p className="text-sm font-medium text-slate-500 mt-1">Click on a rate to edit</p>
               </div>
             </div>
             <div className="table-container">
@@ -209,8 +211,11 @@ export default function IncentiveConfigPage() {
 
         {/* Legend */}
         <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="card p-4">
-            <h4 className="font-medium text-slate-900 mb-3">Formula Types</h4>
+          <div className="card p-5 border-l-4 border-l-blue-500">
+            <h4 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+              <span className="w-1 h-5 bg-blue-500 rounded-full"></span>
+              Formula Types
+            </h4>
             <div className="space-y-3 text-sm">
               <div className="flex items-start gap-3">
                 <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-medium">COUNT_MULTIPLY</span>
@@ -223,8 +228,11 @@ export default function IncentiveConfigPage() {
             </div>
           </div>
 
-          <div className="card p-4">
-            <h4 className="font-medium text-slate-900 mb-3">Position Categories</h4>
+          <div className="card p-5 border-l-4 border-l-purple-500">
+            <h4 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+              <span className="w-1 h-5 bg-purple-500 rounded-full"></span>
+              Position Categories
+            </h4>
             <div className="space-y-2 text-sm">
               <div>
                 <span className="font-medium text-slate-700">Veterinarians:</span>

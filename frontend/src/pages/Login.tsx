@@ -78,16 +78,16 @@ export default function Login() {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-xl p-8 border border-slate-200">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 border border-slate-200">
             <div className="text-center mb-8">
-              <h2 className="text-2xl font-display font-bold text-slate-900">Welcome back</h2>
-              <p className="text-slate-500 mt-2">Sign in to your account to continue</p>
+              <h2 className="text-3xl font-display font-bold text-slate-900 mb-2">Welcome back</h2>
+              <p className="text-slate-500 text-sm">Sign in to your account to continue</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
               {error && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                  {error}
+                <div className="p-4 bg-red-50 border-l-4 border-red-500 rounded-lg text-red-700 text-sm shadow-sm">
+                  <p className="font-medium">{error}</p>
                 </div>
               )}
 
@@ -146,9 +146,9 @@ export default function Login() {
               </button>
             </form>
 
-            <div className="mt-6 text-center text-sm text-slate-500">
-              <p>Demo credentials:</p>
-              <p className="font-mono text-xs mt-1">admin@pethub.com / admin123</p>
+            <div className="mt-6 p-3 bg-slate-50 rounded-lg border border-slate-200 text-center">
+              <p className="text-xs font-medium text-slate-600 mb-1">Demo credentials:</p>
+              <p className="font-mono text-xs text-slate-700 bg-white px-3 py-1.5 rounded border border-slate-300 inline-block">admin@pethub.com / admin123</p>
             </div>
           </div>
         </div>

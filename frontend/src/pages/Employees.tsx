@@ -108,6 +108,13 @@ export default function Employees() {
     mutationFn: (data: any) => employeeApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
+      // Invalidate payroll queries to sync employee changes
+      queryClient.invalidateQueries({ queryKey: ['payrolls'] });
+      queryClient.invalidateQueries({ queryKey: ['payroll'] });
+      // Invalidate dashboard stats
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      // Refetch immediately for real-time updates
+      queryClient.refetchQueries({ queryKey: ['payrolls'] });
       closeModal();
     },
   });
@@ -116,6 +123,15 @@ export default function Employees() {
     mutationFn: ({ id, data }: { id: number; data: any }) => employeeApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['employee', editingEmployee?.id] });
+      // Invalidate all payroll queries to sync employee changes to payroll and payslip views
+      queryClient.invalidateQueries({ queryKey: ['payrolls'] });
+      queryClient.invalidateQueries({ queryKey: ['payroll'] });
+      // Invalidate dashboard stats
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      // Refetch immediately for real-time updates (no page refresh needed)
+      queryClient.refetchQueries({ queryKey: ['payrolls'] });
+      queryClient.refetchQueries({ queryKey: ['payroll'] });
       closeModal();
     },
   });
@@ -124,6 +140,11 @@ export default function Employees() {
     mutationFn: (id: number) => employeeApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
+      // Invalidate payroll queries when employee is deleted
+      queryClient.invalidateQueries({ queryKey: ['payrolls'] });
+      queryClient.invalidateQueries({ queryKey: ['payroll'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.refetchQueries({ queryKey: ['payrolls'] });
     },
   });
 
@@ -359,10 +380,15 @@ export default function Employees() {
           <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex min-h-screen items-center justify-center p-4">
               <div className="fixed inset-0 bg-black/50" onClick={closeModal}></div>
-              <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
-                <h2 className="text-xl font-semibold text-slate-900 mb-6">
-                  {editingEmployee ? 'Edit Employee' : 'Add New Employee'}
-                </h2>
+              <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto border border-slate-200">
+                <div className="mb-6 pb-4 border-b border-slate-200 sticky top-0 bg-white z-10">
+                  <h2 className="text-2xl font-bold text-slate-900">
+                    {editingEmployee ? 'Edit Employee' : 'Add New Employee'}
+                  </h2>
+                  <p className="text-sm text-slate-500 mt-1">
+                    {editingEmployee ? 'Update employee information' : 'Add a new employee to the system'}
+                  </p>
+                </div>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -436,11 +462,11 @@ export default function Employees() {
                     </div>
 
                     {/* Rate Calculation Section */}
-                    <div className="md:col-span-2 border rounded-lg p-4 bg-slate-50">
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="font-medium text-slate-900">Rate Calculation</h4>
-                        <div className="flex items-center gap-2 text-xs text-slate-500">
-                          <Info className="h-3 w-3" />
+                    <div className="md:col-span-2 border-2 border-primary-200 rounded-lg p-5 bg-gradient-to-br from-primary-50 to-white">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-semibold text-slate-900 text-base">Rate Calculation</h4>
+                        <div className="flex items-center gap-2 text-xs font-medium px-3 py-1.5 bg-primary-100 text-primary-700 rounded-full">
+                          <Info className="h-3.5 w-3.5" />
                           <span>{formulaDescription}</span>
                         </div>
                       </div>

@@ -62,6 +62,11 @@ export default function IncentiveExclusionsModal({ employee, onClose }: Incentiv
       
       // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: ['incentive-exclusions', employee.id] });
+      // Invalidate payroll queries to sync changes
+      queryClient.invalidateQueries({ queryKey: ['payrolls'] });
+      queryClient.invalidateQueries({ queryKey: ['payroll'] });
+      queryClient.refetchQueries({ queryKey: ['payrolls'] });
+      queryClient.refetchQueries({ queryKey: ['payroll'] });
       queryClient.invalidateQueries({ queryKey: ['eligible-counts'] });
       queryClient.invalidateQueries({ queryKey: ['payrolls'] });
     },

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { X, Calculator, Save } from 'lucide-react';
-import { incentiveApi } from '../utils/api';
+import { incentiveApi, payrollApi } from '../utils/api';
 import { PayrollPeriod, IncentiveConfig, POSITION_LABELS, DEFAULT_INCENTIVE_RATES } from '../types';
 import { formatCurrency } from '../utils/helpers';
 
@@ -16,10 +16,22 @@ interface IncentiveInputState {
   inputValue: number;
 }
 
-export default function IncentiveCalculatorModal({ payroll, onClose }: IncentiveCalculatorModalProps) {
+export default function IncentiveCalculatorModal({ payroll: initialPayroll, onClose }: IncentiveCalculatorModalProps) {
   const queryClient = useQueryClient();
   const [inputs, setInputs] = useState<IncentiveInputState[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Fetch payroll data using query so it auto-updates after sync
+  const { data: payrollData } = useQuery({
+    queryKey: ['payroll', initialPayroll.id],
+    queryFn: () => payrollApi.getById(initialPayroll.id).then((res) => res.data),
+    initialData: initialPayroll, // Use initial payroll as fallback
+    refetchOnWindowFocus: false,
+    refetchOnMount: true, // Always refetch when modal opens to get latest data
+  });
+
+  // Use the fetched data or fallback to initial
+  const payroll = payrollData || initialPayroll;
 
   const position = payroll.employee?.position || 'STAFF';
   const branchId = payroll.employee?.branchId || 0;
@@ -40,20 +52,25 @@ export default function IncentiveCalculatorModal({ payroll, onClose }: Incentive
   });
 
   // Initialize inputs from existing incentives or configs
+  // Reset inputs whenever payroll changes (when modal opens with different payroll)
   useEffect(() => {
     if (configs && configs.length > 0) {
-      const initialInputs: IncentiveInputState[] = configs.map((config: IncentiveConfig) => {
-        // Find existing incentive for this type
-        const existing = payroll.incentives?.find((inc) => inc.type === config.type);
-        return {
-          type: config.type,
-          count: existing?.count || 0,
-          inputValue: existing?.inputValue || 0,
-        };
-      });
-      setInputs(initialInputs);
+      // Wait for payroll data to be loaded (either from query or initial prop)
+      const currentPayroll = payrollData || initialPayroll;
+      if (currentPayroll.incentives) {
+        const initialInputs: IncentiveInputState[] = configs.map((config: IncentiveConfig) => {
+          // Find existing incentive for this type
+          const existing = currentPayroll.incentives?.find((inc: any) => inc.type === config.type);
+          return {
+            type: config.type,
+            count: existing?.count || 0,
+            inputValue: existing?.inputValue || 0,
+          };
+        });
+        setInputs(initialInputs);
+      }
     }
-  }, [configs, payroll.incentives]);
+  }, [configs, payrollData, initialPayroll.id, initialPayroll.incentives]); // Use payrollData to ensure we use fresh data
 
   // Calculate totals in real-time
   const calculations = useMemo(() => {
@@ -144,7 +161,9 @@ export default function IncentiveCalculatorModal({ payroll, onClose }: Incentive
       return incentiveApi.bulkUpdate(payroll.id, incentivesToSave);
     },
     onSuccess: () => {
+      // Invalidate all related queries to ensure fresh data on next open
       queryClient.invalidateQueries({ queryKey: ['payrolls'] });
+      queryClient.invalidateQueries({ queryKey: ['payroll', payroll.id] });
       onClose();
     },
   });
@@ -185,7 +204,7 @@ export default function IncentiveCalculatorModal({ payroll, onClose }: Incentive
             <div className="mt-4 grid grid-cols-3 gap-4 text-sm">
               <div className="bg-white/10 rounded-lg p-3">
                 <p className="text-primary-200">Position</p>
-                <p className="font-medium">{POSITION_LABELS[position] || position}</p>
+                <p className="font-medium">{POSITION_LABELS[position as keyof typeof POSITION_LABELS] || position}</p>
               </div>
               <div className="bg-white/10 rounded-lg p-3">
                 <p className="text-primary-200">Rate/Day</p>

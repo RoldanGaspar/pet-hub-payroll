@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import prisma from '../utils/prisma';
 import { authMiddleware, AuthRequest } from '../middleware/auth.middleware';
-import { calculateEmployeeRates, DEFAULT_WORKING_DAYS_PER_MONTH, DEFAULT_WORKING_HOURS_PER_DAY, usesAnnualFormula, getRateFormulaDescription } from '../utils/payrollCalculations';
+import { calculateEmployeeRates, DEFAULT_WORKING_DAYS_PER_MONTH, DEFAULT_WORKING_HOURS_PER_DAY, usesAnnualFormula, getRateFormulaDescription, calculatePayroll } from '../utils/payrollCalculations';
 import { PositionType } from '@prisma/client';
 
 const router = Router();
@@ -335,6 +335,21 @@ router.put('/:id/fixed-deductions', authMiddleware, async (req: AuthRequest, res
     const id = req.params.id as string;
     const { deductions } = req.body;
 
+    // Get existing fixed deductions before deleting
+    const existingFixedDeductions = await prisma.fixedDeduction.findMany({
+      where: { employeeId: parseInt(id) },
+    });
+
+    const existingTypes = new Set(existingFixedDeductions.map((fd) => fd.type));
+    const newTypes = new Set(
+      deductions && deductions.length > 0
+        ? deductions.map((d: { type: string }) => d.type)
+        : []
+    );
+
+    // Find deduction types that were removed
+    const removedTypes = Array.from(existingTypes).filter((type) => !newTypes.has(type));
+
     // Delete existing and create new
     await prisma.fixedDeduction.deleteMany({
       where: { employeeId: parseInt(id) },
@@ -347,8 +362,130 @@ router.put('/:id/fixed-deductions', authMiddleware, async (req: AuthRequest, res
           type: d.type,
           amount: d.amount,
           category: d.category || 'OTHERS',
+          isActive: true, // All new deductions are active by default
         })),
       });
+    }
+
+    // Automatically sync fixed deductions to all payroll periods for this employee
+    // This keeps the employee's fixed deductions and payroll deductions in sync
+    // When fixed deductions are updated, automatically apply them to all payrolls (divided by each payroll's divisor)
+    const payrollPeriods = await prisma.payrollPeriod.findMany({
+      where: { employeeId: parseInt(id) },
+      select: { id: true, deductionDivisor: true },
+    });
+
+    // Get the updated fixed deductions (only active ones)
+    const updatedFixedDeductions = deductions && deductions.length > 0 
+      ? deductions.filter((d: { type: string; amount: number }) => d.amount > 0)
+      : [];
+
+    // Sync to all payroll periods
+    for (const payroll of payrollPeriods) {
+      const divisor = payroll.deductionDivisor || 2;
+
+      // First, delete deductions for removed types (types that were deleted from fixed deductions)
+      if (removedTypes.length > 0) {
+        await prisma.deduction.deleteMany({
+          where: {
+            payrollId: payroll.id,
+            type: { in: removedTypes },
+          },
+        });
+      }
+
+      // Delete existing deductions that match fixed deduction types (will be replaced with updated amounts)
+      // (Keep any manually added deductions that aren't in fixed deductions)
+      if (updatedFixedDeductions.length > 0) {
+        const fixedDeductionTypes = updatedFixedDeductions.map((d: { type: string }) => d.type);
+        
+        // Delete deductions that are in fixed deductions (will be replaced)
+        await prisma.deduction.deleteMany({
+          where: {
+            payrollId: payroll.id,
+            type: { in: fixedDeductionTypes },
+          },
+        });
+
+        // Create/update deductions from fixed deductions, divided by divisor
+        for (const fd of updatedFixedDeductions) {
+          const dividedAmount = Number(fd.amount) / divisor;
+          // Round to 2 decimal places
+          const roundedAmount = Math.round(dividedAmount * 100) / 100;
+          
+          await prisma.deduction.create({
+            data: {
+              payrollId: payroll.id,
+              type: fd.type,
+              amount: roundedAmount,
+            },
+          });
+        }
+      } else {
+        // If all fixed deductions are removed, delete all deductions that match fixed deduction types
+        // Get all possible fixed deduction types to know what to delete
+        const allFixedTypes = ['WTAX', 'SSS', 'PAGIBIG', 'PHILHEALTH', 'SUNLIFE', 'BPI_AIA', 
+                               'SSS_LOAN', 'PAGIBIG_LOAN', 'COMPANY_LOAN', 'UNIFORM', 
+                               'CASH_ADVANCE', 'LATE', 'OTHERS'];
+        
+        await prisma.deduction.deleteMany({
+          where: {
+            payrollId: payroll.id,
+            type: { in: allFixedTypes },
+          },
+        });
+      }
+
+      // Recalculate totals for this payroll (including net pay, gross pay, etc.)
+      const payrollData = await prisma.payrollPeriod.findUnique({
+        where: { id: payroll.id },
+        include: {
+          employee: true,
+          incentives: true,
+          deductions: true,
+        },
+      });
+
+      if (payrollData) {
+        const allDeductions = payrollData.deductions;
+        const totalDeductions = allDeductions.reduce((sum, d) => sum + Number(d.amount), 0);
+        const totalIncentives = payrollData.incentives.reduce((sum, i) => sum + Number(i.amount), 0);
+
+        // Recalculate totalDaysPresent: Working Days - Rest Days (dayOff) - Absences
+        const calculatedDaysPresent = payrollData.workingDays - payrollData.dayOff - payrollData.absences;
+
+        // Recalculate all payroll values using the calculation utility
+        const calculation = calculatePayroll({
+          salary: Number(payrollData.employee.salary),
+          ratePerDay: Number(payrollData.employee.ratePerDay),
+          ratePerHour: Number(payrollData.employee.ratePerHour),
+          workingDays: payrollData.workingDays,
+          totalDaysPresent: calculatedDaysPresent,
+          holidays: Number(payrollData.holidays),
+          overtimeHours: Number(payrollData.overtimeHours),
+          lateMinutes: Number(payrollData.lateMinutes),
+          mealAllowance: Number(payrollData.mealAllowance),
+          silPay: Number(payrollData.silPay),
+          birthdayLeave: Number(payrollData.birthdayLeave),
+          totalIncentives,
+          totalDeductions,
+        });
+
+        // Update payroll with all recalculated values
+        await prisma.payrollPeriod.update({
+          where: { id: payroll.id },
+          data: {
+            totalDaysPresent: calculatedDaysPresent,
+            totalDeductions,
+            totalIncentives,
+            basicPay: calculation.basicPay,
+            holidayPay: calculation.holidayPay,
+            overtimePay: calculation.overtimePay,
+            grossPay: calculation.grossPay,
+            netPay: calculation.netPay,
+          },
+        });
+      }
     }
 
     const employee = await prisma.employee.findUnique({

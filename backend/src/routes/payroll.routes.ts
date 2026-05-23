@@ -7,6 +7,9 @@ const router = Router();
 
 // Get all payroll periods
 router.get('/', authMiddleware, async (req: AuthRequest, res) => {
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/0b3fc8b0-8a35-4408-bc81-949c8ae1c64e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payroll.routes.ts:9',message:'GET /payrolls - Entry',data:{query:req.query},timestamp:Date.now(),runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   try {
     const { branchId, startDate, endDate, status } = req.query;
 
@@ -25,11 +28,15 @@ router.get('/', authMiddleware, async (req: AuthRequest, res) => {
       where.employee = { branchId: parseInt(branchId as string) };
     }
 
+
     const payrolls = await prisma.payrollPeriod.findMany({
       where,
       include: {
         employee: {
-          include: { branch: true },
+          include: { 
+            branch: true,
+            fixedDeductions: { where: { isActive: true } },
+          },
         },
         incentives: true,
         deductions: true,
@@ -37,10 +44,52 @@ router.get('/', authMiddleware, async (req: AuthRequest, res) => {
       orderBy: [{ startDate: 'desc' }, { employee: { name: 'asc' } }],
     });
 
-    return res.json(payrolls);
-  } catch (error) {
+
+    // #region agent log
+    try {
+      const testSerialization = JSON.stringify(payrolls[0] || {});
+      fetch('http://127.0.0.1:7243/ingest/0b3fc8b0-8a35-4408-bc81-949c8ae1c64e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payroll.routes.ts:44',message:'Serialization test passed',data:{canSerialize:true,serializedLength:testSerialization.length},timestamp:Date.now(),runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    } catch (serialErr: any) {
+      fetch('http://127.0.0.1:7243/ingest/0b3fc8b0-8a35-4408-bc81-949c8ae1c64e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payroll.routes.ts:44',message:'Serialization test FAILED',data:{error:serialErr?.message},timestamp:Date.now(),runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    }
+    // #endregion
+
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/0b3fc8b0-8a35-4408-bc81-949c8ae1c64e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payroll.routes.ts:73',message:'Before res.json()',data:{payrollCount:payrolls.length,totalSize:JSON.stringify(payrolls).length},timestamp:Date.now(),runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
+
+    // #region agent log
+    try {
+      const fullSerialization = JSON.stringify(payrolls);
+      fetch('http://127.0.0.1:7243/ingest/0b3fc8b0-8a35-4408-bc81-949c8ae1c64e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payroll.routes.ts:73',message:'Full serialization test',data:{success:true,size:fullSerialization.length},timestamp:Date.now(),runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+    } catch (fullErr: any) {
+      fetch('http://127.0.0.1:7243/ingest/0b3fc8b0-8a35-4408-bc81-949c8ae1c64e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payroll.routes.ts:73',message:'Full serialization FAILED',data:{error:fullErr?.message},timestamp:Date.now(),runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+    }
+    // #endregion
+
+    try {
+      res.json(payrolls);
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0b3fc8b0-8a35-4408-bc81-949c8ae1c64e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payroll.routes.ts:73',message:'res.json() called successfully',data:{},timestamp:Date.now(),runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
+    } catch (jsonErr: any) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0b3fc8b0-8a35-4408-bc81-949c8ae1c64e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payroll.routes.ts:73',message:'res.json() FAILED',data:{error:jsonErr?.message,stack:jsonErr?.stack?.substring(0,500)},timestamp:Date.now(),runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
+      throw jsonErr;
+    }
+    return;
+  } catch (error: any) {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/0b3fc8b0-8a35-4408-bc81-949c8ae1c64e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payroll.routes.ts:45',message:'Error caught',data:{errorMessage:error?.message,errorCode:error?.code,errorName:error?.name,stack:error?.stack?.substring(0,500)},timestamp:Date.now(),runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     console.error('Get payrolls error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    console.error('Error details:', error?.message, error?.stack);
+    return res.status(500).json({ 
+      error: 'Internal server error',
+      message: error?.message || 'Unknown error',
+      details: process.env.NODE_ENV === 'development' ? error?.stack : undefined
+    });
   }
 });
 
@@ -55,7 +104,7 @@ router.get('/:id', authMiddleware, async (req: AuthRequest, res) => {
         employee: {
           include: {
             branch: true,
-            fixedDeductions: true,
+            fixedDeductions: { where: { isActive: true } },
           },
         },
         incentives: true,
@@ -104,15 +153,57 @@ router.post('/create-period', authMiddleware, async (req: AuthRequest, res) => {
           return existing;
         }
 
-        return prisma.payrollPeriod.create({
+        const divisor = 2; // Default divisor (semi-monthly)
+        const newPayroll = await prisma.payrollPeriod.create({
           data: {
             employeeId: employee.id,
             startDate: new Date(startDate),
             endDate: new Date(endDate),
             workingDays: workingDays || 15,
             totalDaysPresent: workingDays || 15,
+            deductionDivisor: divisor,
             status: 'DRAFT',
           },
+          include: {
+            employee: { include: { branch: true } },
+            incentives: true,
+            deductions: true,
+          },
+        });
+
+        // Automatically apply fixed deductions to the new payroll (divided by divisor)
+        if (employee.fixedDeductions && employee.fixedDeductions.length > 0) {
+          const activeFixedDeductions = employee.fixedDeductions.filter((fd) => fd.isActive);
+          
+          for (const fd of activeFixedDeductions) {
+            const dividedAmount = Number(fd.amount) / divisor;
+            // Round to 2 decimal places
+            const roundedAmount = Math.round(dividedAmount * 100) / 100;
+            
+            await prisma.deduction.create({
+              data: {
+                payrollId: newPayroll.id,
+                type: fd.type,
+                amount: roundedAmount,
+              },
+            });
+          }
+
+          // Recalculate totals
+          const allDeductions = await prisma.deduction.findMany({
+            where: { payrollId: newPayroll.id },
+          });
+          const totalDeductions = allDeductions.reduce((sum, d) => sum + Number(d.amount), 0);
+
+          await prisma.payrollPeriod.update({
+            where: { id: newPayroll.id },
+            data: { totalDeductions },
+          });
+        }
+
+        // Return the updated payroll with deductions
+        return prisma.payrollPeriod.findUnique({
+          where: { id: newPayroll.id },
           include: {
             employee: { include: { branch: true } },
             incentives: true,
@@ -230,7 +321,11 @@ router.post('/:id/calculate', authMiddleware, async (req: AuthRequest, res) => {
     const payroll = await prisma.payrollPeriod.findUnique({
       where: { id: parseInt(id) },
       include: {
-        employee: { include: { fixedDeductions: true } },
+        employee: { 
+          include: { 
+            fixedDeductions: { where: { isActive: true } },
+          },
+        },
         incentives: true,
         deductions: true,
       },

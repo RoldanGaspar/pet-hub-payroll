@@ -134,45 +134,47 @@ export default function Branches() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {branches?.map((branch: Branch) => (
-              <div key={branch.id} className="card overflow-hidden group">
+              <div key={branch.id} className="card overflow-hidden group border-l-4 border-l-primary-500 hover:shadow-lg transition-all duration-200">
                 <div className="p-6">
                   <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-primary-100 text-primary-600 rounded-lg">
-                        <Building2 className="h-5 w-5" />
+                    <div className="flex items-center gap-3 flex-1">
+                      <div className="p-3 bg-primary-100 text-primary-600 rounded-xl shadow-sm">
+                        <Building2 className="h-6 w-6" />
                       </div>
-                      <div>
-                        <h3 className="font-semibold text-slate-900">{branch.name}</h3>
-                        <span className="text-xs text-slate-500">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-bold text-lg text-slate-900 truncate">{branch.name}</h3>
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 inline-block mt-1">
                           {BRANCH_TYPE_LABELS[branch.type]}
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
                       <button
                         onClick={() => openModal(branch)}
-                        className="p-2 text-slate-400 hover:text-primary-600 hover:bg-slate-100 rounded-lg"
+                        className="p-2 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                        title="Edit Branch"
                       >
                         <Edit className="h-4 w-4" />
                       </button>
                       <button
                         onClick={() => handleDelete(branch)}
-                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Delete Branch"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   </div>
 
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-start gap-2 text-slate-600">
-                      <MapPin className="h-4 w-4 mt-0.5 text-slate-400" />
-                      <span>{branch.address || 'No address'}</span>
+                  <div className="space-y-2.5 text-sm mb-4">
+                    <div className="flex items-start gap-2.5 text-slate-600 bg-slate-50 p-2.5 rounded-lg">
+                      <MapPin className="h-4 w-4 mt-0.5 text-slate-400 flex-shrink-0" />
+                      <span className="text-slate-700">{branch.address || 'No address'}</span>
                     </div>
                     {branch.contact && (
-                      <div className="flex items-center gap-2 text-slate-600">
-                        <Phone className="h-4 w-4 text-slate-400" />
-                        <span>{branch.contact}</span>
+                      <div className="flex items-center gap-2.5 text-slate-600 bg-slate-50 p-2.5 rounded-lg">
+                        <Phone className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                        <span className="text-slate-700 font-medium">{branch.contact}</span>
                       </div>
                     )}
                   </div>
@@ -216,10 +218,15 @@ export default function Branches() {
           <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex min-h-screen items-center justify-center p-4">
               <div className="fixed inset-0 bg-black/50" onClick={closeModal}></div>
-              <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-                <h2 className="text-xl font-semibold text-slate-900 mb-6">
-                  {editingBranch ? 'Edit Branch' : 'Add New Branch'}
-                </h2>
+              <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md p-6 border border-slate-200">
+                <div className="mb-6 pb-4 border-b border-slate-200">
+                  <h2 className="text-2xl font-bold text-slate-900">
+                    {editingBranch ? 'Edit Branch' : 'Add New Branch'}
+                  </h2>
+                  <p className="text-sm text-slate-500 mt-1">
+                    {editingBranch ? 'Update branch information' : 'Create a new branch location'}
+                  </p>
+                </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div>

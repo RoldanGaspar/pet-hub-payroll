@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import prisma from '../utils/prisma';
 import { authMiddleware, AuthRequest } from '../middleware/auth.middleware';
+import { calculatePayroll } from '../utils/payrollCalculations';
 
 const router = Router();
 
@@ -55,16 +56,56 @@ router.post('/', authMiddleware, async (req: AuthRequest, res) => {
       });
     }
 
-    // Recalculate payroll totals
-    const allDeductions = await prisma.deduction.findMany({
-      where: { payrollId: parseInt(payrollId) },
-    });
-    const totalDeductions = allDeductions.reduce((sum, d) => sum + Number(d.amount), 0);
-
-    await prisma.payrollPeriod.update({
+    // Recalculate all payroll values
+    const payrollData = await prisma.payrollPeriod.findUnique({
       where: { id: parseInt(payrollId) },
-      data: { totalDeductions },
+      include: {
+        employee: true,
+        incentives: true,
+        deductions: true,
+      },
     });
+
+    if (payrollData) {
+      const allDeductions = payrollData.deductions;
+      const totalDeductions = allDeductions.reduce((sum, d) => sum + Number(d.amount), 0);
+      const totalIncentives = payrollData.incentives.reduce((sum, i) => sum + Number(i.amount), 0);
+
+      // Recalculate totalDaysPresent: Working Days - Rest Days (dayOff) - Absences
+      const calculatedDaysPresent = payrollData.workingDays - payrollData.dayOff - payrollData.absences;
+
+      // Recalculate all payroll values using the calculation utility
+      const calculation = calculatePayroll({
+        salary: Number(payrollData.employee.salary),
+        ratePerDay: Number(payrollData.employee.ratePerDay),
+        ratePerHour: Number(payrollData.employee.ratePerHour),
+        workingDays: payrollData.workingDays,
+        totalDaysPresent: calculatedDaysPresent,
+        holidays: Number(payrollData.holidays),
+        overtimeHours: Number(payrollData.overtimeHours),
+        lateMinutes: Number(payrollData.lateMinutes),
+        mealAllowance: Number(payrollData.mealAllowance),
+        silPay: Number(payrollData.silPay),
+        birthdayLeave: Number(payrollData.birthdayLeave),
+        totalIncentives,
+        totalDeductions,
+      });
+
+      // Update payroll with all recalculated values
+      await prisma.payrollPeriod.update({
+        where: { id: parseInt(payrollId) },
+        data: {
+          totalDaysPresent: calculatedDaysPresent,
+          totalDeductions,
+          totalIncentives,
+          basicPay: calculation.basicPay,
+          holidayPay: calculation.holidayPay,
+          overtimePay: calculation.overtimePay,
+          grossPay: calculation.grossPay,
+          netPay: calculation.netPay,
+        },
+      });
+    }
 
     return res.json(deduction);
   } catch (error) {
@@ -95,19 +136,61 @@ router.post('/bulk', authMiddleware, async (req: AuthRequest, res) => {
       });
     }
 
-    // Recalculate payroll totals
-    const allDeductions = await prisma.deduction.findMany({
-      where: { payrollId: parseInt(payrollId) },
-    });
-    const totalDeductions = allDeductions.reduce((sum, d) => sum + Number(d.amount), 0);
-
-    const payroll = await prisma.payrollPeriod.update({
+    // Recalculate all payroll values
+    const payrollData = await prisma.payrollPeriod.findUnique({
       where: { id: parseInt(payrollId) },
-      data: { totalDeductions },
-      include: { deductions: true },
+      include: {
+        employee: true,
+        incentives: true,
+        deductions: true,
+      },
     });
 
-    return res.json(payroll);
+    if (payrollData) {
+      const allDeductions = payrollData.deductions;
+      const totalDeductions = allDeductions.reduce((sum, d) => sum + Number(d.amount), 0);
+      const totalIncentives = payrollData.incentives.reduce((sum, i) => sum + Number(i.amount), 0);
+
+      // Recalculate totalDaysPresent: Working Days - Rest Days (dayOff) - Absences
+      const calculatedDaysPresent = payrollData.workingDays - payrollData.dayOff - payrollData.absences;
+
+      // Recalculate all payroll values using the calculation utility
+      const calculation = calculatePayroll({
+        salary: Number(payrollData.employee.salary),
+        ratePerDay: Number(payrollData.employee.ratePerDay),
+        ratePerHour: Number(payrollData.employee.ratePerHour),
+        workingDays: payrollData.workingDays,
+        totalDaysPresent: calculatedDaysPresent,
+        holidays: Number(payrollData.holidays),
+        overtimeHours: Number(payrollData.overtimeHours),
+        lateMinutes: Number(payrollData.lateMinutes),
+        mealAllowance: Number(payrollData.mealAllowance),
+        silPay: Number(payrollData.silPay),
+        birthdayLeave: Number(payrollData.birthdayLeave),
+        totalIncentives,
+        totalDeductions,
+      });
+
+      // Update payroll with all recalculated values
+      const payroll = await prisma.payrollPeriod.update({
+        where: { id: parseInt(payrollId) },
+        data: {
+          totalDaysPresent: calculatedDaysPresent,
+          totalDeductions,
+          totalIncentives,
+          basicPay: calculation.basicPay,
+          holidayPay: calculation.holidayPay,
+          overtimePay: calculation.overtimePay,
+          grossPay: calculation.grossPay,
+          netPay: calculation.netPay,
+        },
+        include: { deductions: true },
+      });
+
+      return res.json(payroll);
+    }
+
+    return res.status(404).json({ error: 'Payroll not found' });
   } catch (error) {
     console.error('Bulk update deductions error:', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -154,15 +237,57 @@ router.post('/apply-fixed/:payrollId', authMiddleware, async (req: AuthRequest, 
       });
     }
 
-    // Recalculate totals
-    const allDeductions = await prisma.deduction.findMany({
-      where: { payrollId: parseInt(payrollId) },
+    // Recalculate all payroll values
+    const payrollData = await prisma.payrollPeriod.findUnique({
+      where: { id: parseInt(payrollId) },
+      include: {
+        employee: true,
+        incentives: true,
+        deductions: true,
+      },
     });
-    const totalDeductions = allDeductions.reduce((sum, d) => sum + Number(d.amount), 0);
 
+    if (!payrollData) {
+      return res.status(404).json({ error: 'Payroll not found' });
+    }
+
+    const allDeductions = payrollData.deductions;
+    const totalDeductions = allDeductions.reduce((sum, d) => sum + Number(d.amount), 0);
+    const totalIncentives = payrollData.incentives.reduce((sum, i) => sum + Number(i.amount), 0);
+
+    // Recalculate totalDaysPresent: Working Days - Rest Days (dayOff) - Absences
+    const calculatedDaysPresent = payrollData.workingDays - payrollData.dayOff - payrollData.absences;
+
+    // Recalculate all payroll values using the calculation utility
+    const calculation = calculatePayroll({
+      salary: Number(payrollData.employee.salary),
+      ratePerDay: Number(payrollData.employee.ratePerDay),
+      ratePerHour: Number(payrollData.employee.ratePerHour),
+      workingDays: payrollData.workingDays,
+      totalDaysPresent: calculatedDaysPresent,
+      holidays: Number(payrollData.holidays),
+      overtimeHours: Number(payrollData.overtimeHours),
+      lateMinutes: Number(payrollData.lateMinutes),
+      mealAllowance: Number(payrollData.mealAllowance),
+      silPay: Number(payrollData.silPay),
+      birthdayLeave: Number(payrollData.birthdayLeave),
+      totalIncentives,
+      totalDeductions,
+    });
+
+    // Update payroll with all recalculated values
     const updated = await prisma.payrollPeriod.update({
       where: { id: parseInt(payrollId) },
-      data: { totalDeductions },
+      data: {
+        totalDaysPresent: calculatedDaysPresent,
+        totalDeductions,
+        totalIncentives,
+        basicPay: calculation.basicPay,
+        holidayPay: calculation.holidayPay,
+        overtimePay: calculation.overtimePay,
+        grossPay: calculation.grossPay,
+        netPay: calculation.netPay,
+      },
       include: { deductions: true },
     });
 
@@ -204,16 +329,56 @@ router.delete('/:id', authMiddleware, async (req: AuthRequest, res) => {
       where: { id: parseInt(id) },
     });
 
-    // Recalculate payroll totals
-    const allDeductions = await prisma.deduction.findMany({
-      where: { payrollId: deduction.payrollId },
-    });
-    const totalDeductions = allDeductions.reduce((sum, d) => sum + Number(d.amount), 0);
-
-    await prisma.payrollPeriod.update({
+    // Recalculate all payroll values
+    const payrollData = await prisma.payrollPeriod.findUnique({
       where: { id: deduction.payrollId },
-      data: { totalDeductions },
+      include: {
+        employee: true,
+        incentives: true,
+        deductions: true,
+      },
     });
+
+    if (payrollData) {
+      const allDeductions = payrollData.deductions;
+      const totalDeductions = allDeductions.reduce((sum, d) => sum + Number(d.amount), 0);
+      const totalIncentives = payrollData.incentives.reduce((sum, i) => sum + Number(i.amount), 0);
+
+      // Recalculate totalDaysPresent: Working Days - Rest Days (dayOff) - Absences
+      const calculatedDaysPresent = payrollData.workingDays - payrollData.dayOff - payrollData.absences;
+
+      // Recalculate all payroll values using the calculation utility
+      const calculation = calculatePayroll({
+        salary: Number(payrollData.employee.salary),
+        ratePerDay: Number(payrollData.employee.ratePerDay),
+        ratePerHour: Number(payrollData.employee.ratePerHour),
+        workingDays: payrollData.workingDays,
+        totalDaysPresent: calculatedDaysPresent,
+        holidays: Number(payrollData.holidays),
+        overtimeHours: Number(payrollData.overtimeHours),
+        lateMinutes: Number(payrollData.lateMinutes),
+        mealAllowance: Number(payrollData.mealAllowance),
+        silPay: Number(payrollData.silPay),
+        birthdayLeave: Number(payrollData.birthdayLeave),
+        totalIncentives,
+        totalDeductions,
+      });
+
+      // Update payroll with all recalculated values
+      await prisma.payrollPeriod.update({
+        where: { id: deduction.payrollId },
+        data: {
+          totalDaysPresent: calculatedDaysPresent,
+          totalDeductions,
+          totalIncentives,
+          basicPay: calculation.basicPay,
+          holidayPay: calculation.holidayPay,
+          overtimePay: calculation.overtimePay,
+          grossPay: calculation.grossPay,
+          netPay: calculation.netPay,
+        },
+      });
+    }
 
     return res.json({ message: 'Deduction deleted successfully' });
   } catch (error) {

@@ -117,32 +117,32 @@ export default function CashAdvances() {
 
       <div className="p-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-          <div className="card p-6">
+          <div className="card p-6 border-l-4 border-l-amber-500 hover:shadow-lg transition-shadow">
             <div className="flex items-center gap-4">
-              <div className="p-3 bg-amber-100 text-amber-600 rounded-xl">
+              <div className="p-3 bg-amber-100 text-amber-600 rounded-xl shadow-sm">
                 <Wallet className="h-6 w-6" />
               </div>
               <div>
-                <p className="text-sm text-slate-500">Total Unpaid</p>
-                <p className="text-2xl font-bold text-slate-900">{formatCurrency(totalUnpaid)}</p>
+                <p className="text-sm font-medium text-slate-500 mb-1">Total Unpaid</p>
+                <p className="text-3xl font-bold text-slate-900">{formatCurrency(totalUnpaid)}</p>
               </div>
             </div>
           </div>
-          <div className="card p-6">
+          <div className="card p-6 border-l-4 border-l-red-500 hover:shadow-lg transition-shadow">
             <div className="flex items-center gap-4">
-              <div className="p-3 bg-red-100 text-red-600 rounded-xl">
+              <div className="p-3 bg-red-100 text-red-600 rounded-xl shadow-sm">
                 <Wallet className="h-6 w-6" />
               </div>
               <div>
-                <p className="text-sm text-slate-500">Pending Advances</p>
-                <p className="text-2xl font-bold text-slate-900">
+                <p className="text-sm font-medium text-slate-500 mb-1">Pending Advances</p>
+                <p className="text-3xl font-bold text-slate-900">
                   {cashAdvances?.filter((ca: CashAdvance) => !ca.isPaid).length || 0}
                 </p>
               </div>
             </div>
           </div>
-          <div className="card p-6 flex items-center justify-center">
-            <button onClick={() => openModal()} className="btn-primary">
+          <div className="card p-6 flex items-center justify-center bg-gradient-to-br from-primary-50 to-white border-l-4 border-l-primary-500">
+            <button onClick={() => openModal()} className="btn-primary w-full">
               <Plus className="h-4 w-4" />
               New Cash Advance
             </button>
@@ -150,8 +150,8 @@ export default function CashAdvances() {
         </div>
 
         <div className="card">
-          <div className="card-header flex items-center justify-between">
-            <h3 className="font-semibold text-slate-900">Cash Advances</h3>
+          <div className="card-header flex items-center justify-between bg-gradient-to-r from-slate-50 to-white">
+            <h3 className="font-bold text-lg text-slate-900">Cash Advances</h3>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -245,10 +245,15 @@ export default function CashAdvances() {
           <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex min-h-screen items-center justify-center p-4">
               <div className="fixed inset-0 bg-black/50" onClick={closeModal}></div>
-              <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-                <h2 className="text-xl font-semibold text-slate-900 mb-6">
-                  {editingCA ? 'Edit Cash Advance' : 'New Cash Advance'}
-                </h2>
+              <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md p-6 border border-slate-200">
+                <div className="mb-6 pb-4 border-b border-slate-200">
+                  <h2 className="text-2xl font-bold text-slate-900">
+                    {editingCA ? 'Edit Cash Advance' : 'New Cash Advance'}
+                  </h2>
+                  <p className="text-sm text-slate-500 mt-1">
+                    {editingCA ? 'Update cash advance details' : 'Record a new cash advance'}
+                  </p>
+                </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div>

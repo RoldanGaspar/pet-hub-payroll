@@ -533,13 +533,14 @@ async function recalculatePayrollTotals(payrollId: number) {
   const calculatedDaysPresent = payroll.workingDays - payroll.dayOff - payroll.absences;
 
   const basicPay = ratePerDay * calculatedDaysPresent;
-  const holidayPay = Number(payroll.holidays) * ratePerDay;
+  const holidayPayRaw = Number(payroll.holidays) * ratePerDay;
+  const holidayPay = Math.floor(holidayPayRaw * 100) / 100; // Truncate: 797.446 → 797.44
   const overtimePay = ratePerHour * Number(payroll.overtimeHours);
   const lateDeduction = ratePerHour * (Number(payroll.lateMinutes) / 60);
 
   const grossPay =
     basicPay +
-    holidayPay +
+    holidayPay + // Use truncated holiday pay value
     overtimePay +
     totalIncentives +
     Number(payroll.mealAllowance) +
@@ -555,10 +556,10 @@ async function recalculatePayrollTotals(payrollId: number) {
       totalIncentives,
       totalDeductions,
       basicPay: Math.round(basicPay * 100) / 100,
-      holidayPay: Math.round(holidayPay * 100) / 100,
+      holidayPay: holidayPay, // Already truncated
       overtimePay: Math.round(overtimePay * 100) / 100,
       grossPay: Math.round(grossPay * 100) / 100,
-      netPay: Math.round(netPay * 100) / 100,
+      netPay: Math.floor(netPay * 100) / 100, // Truncate net pay: 10,515.816 → 10,515.81
     },
   });
 }

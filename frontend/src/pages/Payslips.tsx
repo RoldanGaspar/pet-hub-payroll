@@ -66,43 +66,43 @@ export default function Payslips() {
             <div className="w-8 h-8 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin mx-auto"></div>
           </div>
         ) : filteredPayrolls && filteredPayrolls.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredPayrolls.map((payroll: PayrollPeriod) => (
               <Link
                 key={payroll.id}
                 to={`/payslips/${payroll.id}`}
-                className="card p-6 hover:shadow-md transition-all group"
+                className="card p-6 hover:shadow-lg transition-all duration-200 group border-l-4 border-l-primary-500"
               >
                 <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-primary-100 text-primary-600 rounded-lg group-hover:bg-primary-600 group-hover:text-white transition-colors">
-                      <FileText className="h-5 w-5" />
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="p-3 bg-primary-100 text-primary-600 rounded-xl group-hover:bg-primary-600 group-hover:text-white transition-all duration-200 shadow-sm group-hover:scale-110">
+                      <FileText className="h-6 w-6" />
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-slate-900">{payroll.employee?.name}</h3>
-                      <p className="text-sm text-slate-500">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-bold text-lg text-slate-900 truncate">{payroll.employee?.name}</h3>
+                      <p className="text-sm font-medium text-slate-500 mt-0.5">
                         {POSITION_LABELS[payroll.employee?.position || 'STAFF']}
                       </p>
                     </div>
                   </div>
-                  <span className={`badge ${getStatusColor(payroll.status)}`}>
+                  <span className={`badge ${getStatusColor(payroll.status)} ml-2 flex-shrink-0`}>
                     {STATUS_LABELS[payroll.status]}
                   </span>
                 </div>
 
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center gap-2 text-slate-600">
-                    <Calendar className="h-4 w-4 text-slate-400" />
-                    <span>{formatDateRange(payroll.startDate, payroll.endDate)}</span>
+                <div className="space-y-2.5 text-sm mb-4">
+                  <div className="flex items-center gap-2.5 text-slate-600 bg-slate-50 p-2.5 rounded-lg">
+                    <Calendar className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                    <span className="font-medium">{formatDateRange(payroll.startDate, payroll.endDate)}</span>
                   </div>
-                  <div className="text-slate-500">
+                  <div className="text-slate-500 font-medium px-2.5">
                     {payroll.employee?.branch?.name}
                   </div>
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
-                  <span className="text-sm text-slate-500">Net Pay</span>
-                  <span className="text-lg font-bold text-primary-600">
+                <div className="pt-4 border-t-2 border-slate-200 flex items-center justify-between bg-gradient-to-r from-primary-50 to-transparent -mx-6 -mb-6 px-6 py-4 rounded-b-xl">
+                  <span className="text-sm font-semibold text-slate-600">Net Pay</span>
+                  <span className="text-2xl font-bold text-primary-600">
                     {formatCurrency(payroll.netPay)}
                   </span>
                 </div>

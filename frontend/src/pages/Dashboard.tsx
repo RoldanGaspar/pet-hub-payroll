@@ -72,19 +72,19 @@ export default function Dashboard() {
             <Link
               key={stat.label}
               to={stat.href}
-              className="card p-6 hover:shadow-md transition-shadow group"
+              className="card p-6 hover:shadow-lg transition-all duration-200 group border-l-4 border-l-transparent hover:border-l-primary-500"
             >
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm text-slate-500">{stat.label}</p>
-                  <p className="text-2xl font-bold text-slate-900 mt-1">{stat.value}</p>
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-slate-500 mb-1">{stat.label}</p>
+                  <p className="text-3xl font-bold text-slate-900">{stat.value}</p>
                 </div>
-                <div className={`p-3 rounded-xl ${stat.color} text-white`}>
-                  <stat.icon className="h-5 w-5" />
+                <div className={`p-3 rounded-xl ${stat.color} text-white shadow-sm group-hover:scale-110 transition-transform duration-200`}>
+                  <stat.icon className="h-6 w-6" />
                 </div>
               </div>
-              <div className="mt-4 flex items-center text-sm text-primary-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                View details <ArrowRight className="h-4 w-4 ml-1" />
+              <div className="flex items-center text-sm font-medium text-primary-600 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                View details <ArrowRight className="h-4 w-4 ml-1 group-hover:translate-x-1 transition-transform" />
               </div>
             </Link>
           ))}
@@ -93,10 +93,10 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Recent Payrolls */}
           <div className="lg:col-span-2 card">
-            <div className="card-header flex items-center justify-between">
-              <h3 className="font-semibold text-slate-900">Recent Payrolls</h3>
-              <Link to="/payroll" className="text-sm text-primary-600 hover:text-primary-700">
-                View all
+            <div className="card-header flex items-center justify-between bg-gradient-to-r from-slate-50 to-white">
+              <h3 className="font-semibold text-lg text-slate-900">Recent Payrolls</h3>
+              <Link to="/payroll" className="text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors flex items-center gap-1">
+                View all <ArrowRight className="h-3 w-3" />
               </Link>
             </div>
             <div className="table-container">
@@ -140,27 +140,27 @@ export default function Dashboard() {
 
           {/* Branch Summary */}
           <div className="card">
-            <div className="card-header">
-              <h3 className="font-semibold text-slate-900">Branch Summary</h3>
+            <div className="card-header bg-gradient-to-r from-slate-50 to-white">
+              <h3 className="font-semibold text-lg text-slate-900">Branch Summary</h3>
             </div>
             <div className="p-4 space-y-3">
               {stats?.branchSummaries?.map((branch: { id: number; name: string; type: BranchType; employeeCount: number; latestDisbursement: number }) => (
                 <Link
                   key={branch.id}
                   to={`/branches/${branch.id}`}
-                  className="block p-4 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors"
+                  className="block p-4 rounded-lg bg-gradient-to-r from-slate-50 to-white hover:from-primary-50 hover:to-white border border-slate-200 hover:border-primary-300 transition-all duration-200 shadow-sm hover:shadow"
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-medium text-slate-900">{branch.name}</h4>
-                    <span className="text-xs text-slate-500">
+                    <h4 className="font-semibold text-slate-900">{branch.name}</h4>
+                    <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
                       {BRANCH_TYPE_LABELS[branch.type]}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-500">
+                  <div className="flex items-center justify-between text-sm mt-3">
+                    <span className="text-slate-500 font-medium">
                       {branch.employeeCount} employees
                     </span>
-                    <span className="font-medium text-primary-600">
+                    <span className="font-bold text-primary-600 text-base">
                       {formatCurrency(branch.latestDisbursement)}
                     </span>
                   </div>

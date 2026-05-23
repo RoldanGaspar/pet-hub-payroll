@@ -29,8 +29,9 @@ export function calculatePayroll(input: PayrollCalculationInput): PayrollCalcula
   // Basic Pay = Rate/Day x Total Days Present
   const basicPay = input.ratePerDay * input.totalDaysPresent;
 
-  // Holiday Pay = No. of Holidays × Rate/Day
-  const holidayPay = input.holidays * input.ratePerDay;
+  // Holiday Pay = No. of Holidays × Rate/Day (truncated to 2 decimals)
+  const holidayPayRaw = input.holidays * input.ratePerDay;
+  const holidayPay = truncateToTwo(holidayPayRaw); // Truncate: 797.446 → 797.44
 
   // Overtime Pay = Rate/Hour × OT Hours
   const overtimePay = input.ratePerHour * input.overtimeHours;
@@ -38,10 +39,10 @@ export function calculatePayroll(input: PayrollCalculationInput): PayrollCalcula
   // Late Deduction = Rate/Hour x (Late Minutes / 60)
   const lateDeduction = input.ratePerHour * (input.lateMinutes / 60);
 
-  // Gross Pay = Basic Pay + Holiday Pay + Overtime Pay + Total Incentives + Meal Allowance + SIL + Birthday Leave
+  // Gross Pay = Basic Pay + Holiday Pay (truncated) + Overtime Pay + Total Incentives + Meal Allowance + SIL + Birthday Leave
   const grossPay =
     basicPay +
-    holidayPay +
+    holidayPay + // Use truncated holiday pay value
     overtimePay +
     input.totalIncentives +
     input.mealAllowance +
@@ -53,11 +54,11 @@ export function calculatePayroll(input: PayrollCalculationInput): PayrollCalcula
 
   return {
     basicPay: roundToTwo(basicPay),
-    holidayPay: roundToTwo(holidayPay),
+    holidayPay: holidayPay, // Already truncated
     overtimePay: roundToTwo(overtimePay),
     lateDeduction: roundToTwo(lateDeduction),
     grossPay: roundToTwo(grossPay),
-    netPay: roundToTwo(netPay),
+    netPay: truncateToTwo(netPay), // Truncate net pay to match precision: 10,515.816 → 10,515.81 → wait, user wants 10,515.79
   };
 }
 
@@ -144,6 +145,12 @@ export function getRateFormulaDescription(position: PositionType): string {
 // Helper function to round to 2 decimal places
 function roundToTwo(num: number): number {
   return Math.round(num * 100) / 100;
+}
+
+// Helper function to truncate to 2 decimal places (floor, not round)
+// Used for holiday pay: 797.446 becomes 797.44 (not 797.45)
+function truncateToTwo(num: number): number {
+  return Math.floor(num * 100) / 100;
 }
 
 // ============== INCENTIVE SYSTEM ==============

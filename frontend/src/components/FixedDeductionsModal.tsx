@@ -75,6 +75,13 @@ export default function FixedDeductionsModal({ employee, onClose }: FixedDeducti
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       queryClient.invalidateQueries({ queryKey: ['employee', employee.id] });
+      // Also refresh payrolls to reflect deduction changes
+      // Invalidate all payroll queries (both list and individual)
+      queryClient.invalidateQueries({ queryKey: ['payrolls'] });
+      queryClient.invalidateQueries({ queryKey: ['payroll'] });
+      // Refetch immediately for real-time updates (no page refresh needed)
+      queryClient.refetchQueries({ queryKey: ['payrolls'] });
+      queryClient.refetchQueries({ queryKey: ['payroll'] });
       onClose();
     },
   });

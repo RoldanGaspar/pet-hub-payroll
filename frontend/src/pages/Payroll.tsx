@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react';
+import React, { Fragment, useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Calculator, FileText, ChevronDown, ChevronUp, Edit3, Table2, Trash2 } from 'lucide-react';
+import { Plus, Calculator, FileText, ChevronDown, ChevronUp, Edit3, Table2, Trash2, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Header from '../components/layout/Header';
 import IncentiveCalculatorModal from '../components/IncentiveCalculatorModal';
 import IncentiveSheetModal from '../components/IncentiveSheetModal';
 import { payrollApi, branchApi, deductionApi } from '../utils/api';
-import { PayrollPeriod, Branch, STATUS_LABELS, POSITION_LABELS, INCENTIVE_LABELS } from '../types';
+import { PayrollPeriod, Branch, STATUS_LABELS, POSITION_LABELS, INCENTIVE_LABELS, DEDUCTION_LABELS } from '../types';
 import { formatCurrency, formatDateRange, getStatusColor } from '../utils/helpers';
 
 // Fixed deduction types to always show (in order)
@@ -18,6 +18,120 @@ const FIXED_DEDUCTION_TYPES = [
   { type: 'SUNLIFE', name: 'Sunlife' },
   { type: 'UNIFORM', name: 'Uniform' },
 ];
+
+// Optional Deductions Component (Cash Advance only)
+function OptionalDeductions({ 
+  payroll, 
+  onUpdate 
+}: { 
+  payroll: PayrollPeriod; 
+  onUpdate: () => void;
+}) {
+  const [cashAdvanceAmount, setCashAdvanceAmount] = useState<string>('');
+  const [isSaving, setIsSaving] = useState(false);
+  const queryClient = useQueryClient();
+
+  // Get existing cash advance deduction
+  const cashAdvanceDeduction = payroll.deductions?.find(d => d.type === 'CASH_ADVANCE');
+
+  useEffect(() => {
+    setCashAdvanceAmount(cashAdvanceDeduction ? String(cashAdvanceDeduction.amount) : '');
+  }, [cashAdvanceDeduction]);
+
+  const handleSave = async (amount: string) => {
+    if (isSaving) return;
+    
+    const amountValue = parseFloat(amount) || 0;
+    setIsSaving(true);
+    
+    try {
+      if (amountValue > 0) {
+        // API handles both create and update automatically
+        await deductionApi.create({
+          payrollId: payroll.id,
+          type: 'CASH_ADVANCE',
+          amount: amountValue,
+        });
+      } else if (cashAdvanceDeduction) {
+        // Remove deduction if amount is 0 or empty
+        await deductionApi.delete(cashAdvanceDeduction.id);
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['payrolls'] });
+      queryClient.invalidateQueries({ queryKey: ['payroll', payroll.id] });
+      queryClient.refetchQueries({ queryKey: ['payrolls'] });
+      queryClient.refetchQueries({ queryKey: ['payroll', payroll.id] });
+      onUpdate();
+    } catch (error) {
+      console.error('Failed to save cash advance:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async (deductionId: number) => {
+    if (window.confirm('Remove cash advance deduction?')) {
+      try {
+        await deductionApi.delete(deductionId);
+        queryClient.invalidateQueries({ queryKey: ['payrolls'] });
+        queryClient.invalidateQueries({ queryKey: ['payroll', payroll.id] });
+        queryClient.refetchQueries({ queryKey: ['payrolls'] });
+        queryClient.refetchQueries({ queryKey: ['payroll', payroll.id] });
+        onUpdate();
+      } catch (error) {
+        console.error('Failed to delete deduction:', error);
+      }
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-lg border border-slate-200 p-2.5">
+      <div className="flex items-center gap-2">
+        <label className="text-xs font-semibold text-slate-700 whitespace-nowrap w-24">
+          {DEDUCTION_LABELS.CASH_ADVANCE}:
+        </label>
+        <div className="flex items-center gap-1.5 flex-1">
+          <span className="text-slate-400 text-xs">₱</span>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={cashAdvanceAmount}
+            onChange={(e) => setCashAdvanceAmount(e.target.value)}
+            onBlur={() => handleSave(cashAdvanceAmount)}
+            placeholder="0.00"
+            className="input flex-1 text-xs py-1 h-7"
+          />
+          {cashAdvanceDeduction ? (
+            <button
+              onClick={() => handleDelete(cashAdvanceDeduction.id)}
+              className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors flex-shrink-0"
+              title="Remove Cash Advance"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                if (parseFloat(cashAdvanceAmount) > 0) {
+                  handleSave(cashAdvanceAmount);
+                }
+              }}
+              className="p-1 text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded transition-colors flex-shrink-0"
+              title="Add Cash Advance"
+              disabled={!cashAdvanceAmount || parseFloat(cashAdvanceAmount) <= 0}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+      {isSaving && (
+        <p className="text-[10px] text-slate-400 text-center mt-1">Saving...</p>
+      )}
+    </div>
+  );
+}
 
 // Editable Deductions Component
 function EditableDeductions({ 
@@ -31,15 +145,55 @@ function EditableDeductions({
   const [isSaving, setIsSaving] = useState(false);
   const queryClient = useQueryClient();
 
+  // Get deduction types to display:
+  // 1. From employee's fixed deductions
+  // 2. From existing payroll deductions (in case manually added)
+  const deductionTypesToShow = useMemo(() => {
+    const types = new Set<string>();
+    
+    // Add types from employee's fixed deductions
+    if (payroll.employee?.fixedDeductions) {
+      payroll.employee.fixedDeductions.forEach((fd) => {
+        if (fd.isActive) {
+          types.add(fd.type);
+        }
+      });
+    }
+    
+    // Add types from existing payroll deductions
+    if (payroll.deductions) {
+      payroll.deductions.forEach((d) => {
+        types.add(d.type);
+      });
+    }
+    
+    // Convert to array and get names from FIXED_DEDUCTION_TYPES
+    return Array.from(types).map((type) => {
+      const typeInfo = FIXED_DEDUCTION_TYPES.find((t) => t.type === type);
+      return {
+        type,
+        name: typeInfo?.name || type,
+      };
+    }).sort((a, b) => {
+      // Sort by the order in FIXED_DEDUCTION_TYPES
+      const aIndex = FIXED_DEDUCTION_TYPES.findIndex((t) => t.type === a.type);
+      const bIndex = FIXED_DEDUCTION_TYPES.findIndex((t) => t.type === b.type);
+      if (aIndex === -1 && bIndex === -1) return 0;
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
+    });
+  }, [payroll.employee?.fixedDeductions, payroll.deductions]);
+
   // Initialize values from existing deductions
   useEffect(() => {
     const values: Record<string, string> = {};
-    FIXED_DEDUCTION_TYPES.forEach(({ type }) => {
+    deductionTypesToShow.forEach(({ type }) => {
       const existing = payroll.deductions?.find((d) => d.type === type);
       values[type] = existing ? String(existing.amount) : '0';
     });
     setDeductionValues(values);
-  }, [payroll.deductions]);
+  }, [payroll.deductions, deductionTypesToShow]);
 
   const handleValueChange = (type: string, value: string) => {
     setDeductionValues((prev) => ({ ...prev, [type]: value }));
@@ -50,14 +204,19 @@ function EditableDeductions({
     
     setIsSaving(true);
     try {
-      // Build deductions array from current values
-      const deductions = FIXED_DEDUCTION_TYPES.map(({ type }) => ({
+      // Build deductions array from current values (only for types that are shown)
+      const deductions = deductionTypesToShow.map(({ type }) => ({
         type,
         amount: parseFloat(deductionValues[type]) || 0,
       })).filter((d) => d.amount > 0);
 
       await deductionApi.bulkUpdate(payroll.id, deductions);
+      // Invalidate both the list and the specific payroll query
       queryClient.invalidateQueries({ queryKey: ['payrolls'] });
+      queryClient.invalidateQueries({ queryKey: ['payroll', payroll.id] });
+      // Refetch immediately for real-time updates
+      queryClient.refetchQueries({ queryKey: ['payrolls'] });
+      queryClient.refetchQueries({ queryKey: ['payroll', payroll.id] });
       onUpdate();
     } catch (error) {
       console.error('Failed to save deductions:', error);
@@ -67,37 +226,43 @@ function EditableDeductions({
   };
 
   // Calculate total
-  const total = FIXED_DEDUCTION_TYPES.reduce(
+  const total = deductionTypesToShow.reduce(
     (sum, { type }) => sum + (parseFloat(deductionValues[type]) || 0),
     0
   );
 
   // Select all text on focus for easy replacement
-  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-    e.target.select();
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement> | React.ChangeEvent<HTMLInputElement>) => {
+    (e.target as HTMLInputElement).select();
   };
 
   return (
     <div className="space-y-3">
-      {FIXED_DEDUCTION_TYPES.map(({ type, name }) => (
-        <div key={type} className="flex items-center justify-between bg-white rounded border p-2">
-          <label className="text-sm font-medium text-slate-700 w-24">{name}</label>
-          <div className="flex items-center gap-1">
-            <span className="text-slate-400 text-sm">₱</span>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={deductionValues[type] === '0' ? '' : deductionValues[type] || ''}
-              onChange={(e) => handleValueChange(type, e.target.value)}
-              onFocus={handleFocus}
-              onBlur={handleSave}
-              placeholder="0.00"
-              className="input w-28 text-right text-sm py-1"
-            />
+      {deductionTypesToShow.length > 0 ? (
+        deductionTypesToShow.map(({ type, name }) => (
+          <div key={type} className="flex items-center justify-between bg-white rounded border p-2">
+            <label className="text-sm font-medium text-slate-700 w-24">{name}</label>
+            <div className="flex items-center gap-1">
+              <span className="text-slate-400 text-sm">₱</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={deductionValues[type] === '0' ? '' : deductionValues[type] || ''}
+                onChange={(e) => handleValueChange(type, e.target.value)}
+                onFocus={handleFocus}
+                onBlur={handleSave}
+                placeholder="0.00"
+                className="input w-28 text-right text-sm py-1"
+              />
+            </div>
           </div>
-        </div>
-      ))}
+        ))
+      ) : (
+        <p className="text-sm text-slate-500 text-center py-4">
+          No fixed deductions configured. Add deductions in the Employees page.
+        </p>
+      )}
       
       {/* Total */}
       <div className="flex items-center justify-between bg-red-50 rounded border border-red-200 p-3 mt-4">
@@ -153,22 +318,37 @@ export default function Payroll() {
 
   const updatePayrollMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) => payrollApi.update(id, data),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
+      // Invalidate all payroll queries to sync truncated holiday pay
       queryClient.invalidateQueries({ queryKey: ['payrolls'] });
+      queryClient.invalidateQueries({ queryKey: ['payroll', variables.id] });
+      // Refetch immediately for real-time updates
+      queryClient.refetchQueries({ queryKey: ['payrolls'] });
+      queryClient.refetchQueries({ queryKey: ['payroll', variables.id] });
     },
   });
 
   const calculatePayrollMutation = useMutation({
     mutationFn: (id: number) => payrollApi.calculate(id),
-    onSuccess: () => {
+    onSuccess: (_, id) => {
+      // Invalidate all payroll queries to sync truncated holiday pay
       queryClient.invalidateQueries({ queryKey: ['payrolls'] });
+      queryClient.invalidateQueries({ queryKey: ['payroll', id] });
+      // Refetch immediately for real-time updates
+      queryClient.refetchQueries({ queryKey: ['payrolls'] });
+      queryClient.refetchQueries({ queryKey: ['payroll', id] });
     },
   });
 
   const applyFixedDeductionsMutation = useMutation({
     mutationFn: (payrollId: number) => deductionApi.applyFixed(payrollId),
-    onSuccess: () => {
+    onSuccess: (data, payrollId) => {
+      // Invalidate both the list and the specific payroll query
       queryClient.invalidateQueries({ queryKey: ['payrolls'] });
+      queryClient.invalidateQueries({ queryKey: ['payroll', payrollId] });
+      // Refetch immediately for real-time updates
+      queryClient.refetchQueries({ queryKey: ['payrolls'] });
+      queryClient.refetchQueries({ queryKey: ['payroll', payrollId] });
     },
   });
 
@@ -187,6 +367,28 @@ export default function Payroll() {
     
     if (window.confirm(`Are you sure you want to delete the payroll period for ${employeeName} (${dateRange})?\n\nThis action cannot be undone.`)) {
       deletePayrollMutation.mutate(payroll.id);
+    }
+  };
+
+  const handleDeletePayrollPeriod = (group: any) => {
+    const dateRange = formatDateRange(group.startDate, group.endDate);
+    const employeeCount = group.payrolls.length;
+    
+    if (window.confirm(`Are you sure you want to delete the entire payroll period ${dateRange}?\n\nThis will delete ${employeeCount} employee payroll${employeeCount > 1 ? 's' : ''}.\n\nThis action cannot be undone.`)) {
+      // Delete all payrolls in this period
+      const deletePromises = group.payrolls.map((payroll: PayrollPeriod) => 
+        payrollApi.delete(payroll.id)
+      );
+      
+      Promise.all(deletePromises)
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: ['payrolls'] });
+          setExpandedPayroll(null);
+        })
+        .catch((error) => {
+          console.error('Error deleting payroll period:', error);
+          alert('Error deleting payroll period. Please try again.');
+        });
     }
   };
 
@@ -256,36 +458,47 @@ export default function Payroll() {
         ) : groupedPayrolls && Object.keys(groupedPayrolls).length > 0 ? (
           <div className="space-y-6">
             {Object.entries(groupedPayrolls).map(([key, group]: [string, any]) => (
-              <div key={key} className="card">
-                <div className="card-header">
+              <div key={key} className="card border-l-4 border-l-primary-500">
+                <div className="card-header bg-gradient-to-r from-slate-50 to-white">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="font-semibold text-slate-900">
+                      <h3 className="font-bold text-lg text-slate-900">
                         {formatDateRange(group.startDate, group.endDate)}
                       </h3>
-                      <p className="text-sm text-slate-500 mt-1">
-                        {group.payrolls.length} employees
+                      <p className="text-sm font-medium text-slate-600 mt-1">
+                        {group.payrolls.length} employee{group.payrolls.length !== 1 ? 's' : ''}
                       </p>
                     </div>
-                    {/* Branch Incentive Sheet Button */}
-                    {group.payrolls[0]?.employee?.branch && (
+                    <div className="flex items-center gap-2">
+                      {/* Branch Incentive Sheet Button */}
+                      {group.payrolls[0]?.employee?.branch && (
+                        <button
+                          onClick={() => {
+                            const p = group.payrolls[0];
+                            setIncentiveSheetInfo({
+                              branchId: p.employee!.branch!.id,
+                              branchName: p.employee!.branch!.name,
+                              startDate: p.startDate.split('T')[0],
+                              endDate: p.endDate.split('T')[0],
+                            });
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors"
+                          title="Open branch-level daily incentive input sheet"
+                        >
+                          <Table2 className="h-4 w-4" />
+                          Branch Incentive Sheet
+                        </button>
+                      )}
+                      {/* Delete Payroll Period Button */}
                       <button
-                        onClick={() => {
-                          const p = group.payrolls[0];
-                          setIncentiveSheetInfo({
-                            branchId: p.employee!.branch!.id,
-                            branchName: p.employee!.branch!.name,
-                            startDate: p.startDate.split('T')[0],
-                            endDate: p.endDate.split('T')[0],
-                          });
-                        }}
-                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors"
-                        title="Open branch-level daily incentive input sheet"
+                        onClick={() => handleDeletePayrollPeriod(group)}
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
+                        title="Delete entire payroll period"
                       >
-                        <Table2 className="h-4 w-4" />
-                        Branch Incentive Sheet
+                        <Trash2 className="h-4 w-4" />
+                        Delete Period
                       </button>
-                    )}
+                    </div>
                   </div>
                 </div>
                 <div className="table-container">
@@ -309,8 +522,8 @@ export default function Payroll() {
                     </thead>
                     <tbody>
                       {group.payrolls.map((payroll: PayrollPeriod) => (
-                        <>
-                          <tr key={payroll.id} className="cursor-pointer hover:bg-slate-50" onClick={() => toggleExpand(payroll.id)}>
+                        <Fragment key={payroll.id}>
+                          <tr className="cursor-pointer hover:bg-slate-50" onClick={() => toggleExpand(payroll.id)}>
                             <td>
                               {expandedPayroll === payroll.id ? (
                                 <ChevronUp className="h-4 w-4 text-slate-400" />
@@ -323,6 +536,9 @@ export default function Payroll() {
                                 <p className="font-medium text-slate-900">{payroll.employee?.name}</p>
                                 <p className="text-xs text-slate-500">
                                   {POSITION_LABELS[payroll.employee?.position || 'STAFF']}
+                                </p>
+                                <p className="text-xs text-blue-600 font-medium mt-0.5">
+                                  Salary: {formatCurrency(Number(payroll.employee?.salary || 0))}
                                 </p>
                               </div>
                             </td>
@@ -341,7 +557,7 @@ export default function Payroll() {
                               <span className="font-medium text-blue-600">{formatCurrency(payroll.holidayPay)}</span>
                               {Number(payroll.holidays) > 0 && (
                                 <p className="text-[10px] text-slate-400">
-                                  {Number(payroll.holidays)} × {formatCurrency(payroll.employee?.ratePerDay || 0)}
+                                  {Number(payroll.holidays).toFixed(2)} × {formatCurrency(payroll.employee?.ratePerDay || 0)}
                                 </p>
                               )}
                             </td>
@@ -401,6 +617,108 @@ export default function Payroll() {
                           {expandedPayroll === payroll.id && (
                             <tr className="bg-slate-50">
                               <td colSpan={13} className="p-6">
+                                {/* Salary Information Section */}
+                                <div className="mb-6 p-5 bg-gradient-to-r from-blue-50 via-indigo-50 to-blue-50 rounded-xl border-2 border-blue-200 shadow-sm">
+                                  <h4 className="font-bold text-lg text-slate-900 mb-4 flex items-center gap-2">
+                                    <span className="w-1 h-6 bg-blue-500 rounded-full"></span>
+                                    Salary Information
+                                  </h4>
+                                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                                    <div className="bg-white rounded-lg p-3 border border-blue-100">
+                                      <p className="text-xs text-slate-500 mb-1">Original Monthly Salary</p>
+                                      <p className="text-lg font-bold text-blue-700">
+                                        {formatCurrency(Number(payroll.employee?.salary || 0))}
+                                      </p>
+                                    </div>
+                                    <div className="bg-white rounded-lg p-3 border border-blue-100">
+                                      <p className="text-xs text-slate-500 mb-1">Rate per Day</p>
+                                      <p className="text-lg font-semibold text-slate-700">
+                                        {formatCurrency(payroll.employee?.ratePerDay || 0)}
+                                      </p>
+                                    </div>
+                                    <div className="bg-white rounded-lg p-3 border border-blue-100">
+                                      <p className="text-xs text-slate-500 mb-1">Rate per Hour</p>
+                                      <p className="text-lg font-semibold text-slate-700">
+                                        {formatCurrency(payroll.employee?.ratePerHour || 0)}
+                                      </p>
+                                    </div>
+                                    <div className="bg-white rounded-lg p-3 border border-blue-100">
+                                      <p className="text-xs text-slate-500 mb-1">Total Days Present</p>
+                                      <p className="text-lg font-semibold text-primary-600">
+                                        {payroll.totalDaysPresent} / {payroll.workingDays}
+                                      </p>
+                                    </div>
+                                    <div className="bg-white rounded-lg p-3 border border-blue-100">
+                                      <p className="text-xs text-slate-500 mb-1">Holiday Pay</p>
+                                      <p className="text-lg font-bold text-blue-600">
+                                        {formatCurrency(payroll.holidayPay)}
+                                      </p>
+                                      {Number(payroll.holidays) > 0 && (
+                                        <p className="text-[10px] text-slate-400 mt-1">
+                                          {Number(payroll.holidays).toFixed(2)} × {formatCurrency(payroll.employee?.ratePerDay || 0)}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Calculation Breakdown */}
+                                <div className="mb-6 p-5 bg-gradient-to-br from-slate-50 to-white rounded-xl border-2 border-slate-200 shadow-sm">
+                                  <h4 className="font-bold text-lg text-slate-900 mb-4 flex items-center gap-2">
+                                    <span className="w-1 h-6 bg-slate-500 rounded-full"></span>
+                                    Pay Calculation Breakdown
+                                  </h4>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {/* Basic Pay Calculation */}
+                                    <div className="bg-white rounded-lg p-3 border border-slate-200">
+                                      <p className="text-xs text-slate-500 mb-2">Basic Pay Calculation</p>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-sm font-medium text-slate-700">
+                                          {payroll.totalDaysPresent} days
+                                        </span>
+                                        <span className="text-slate-400">×</span>
+                                        <span className="text-sm font-medium text-slate-700">
+                                          {formatCurrency(payroll.employee?.ratePerDay || 0)}
+                                        </span>
+                                        <span className="text-slate-400">=</span>
+                                        <span className="text-base font-bold text-primary-600">
+                                          {formatCurrency(payroll.basicPay)}
+                                        </span>
+                                      </div>
+                                      <p className="text-[10px] text-slate-400 mt-1">
+                                        Total Days Present × Rate per Day
+                                      </p>
+                                    </div>
+
+                                    {/* Holiday Pay Calculation */}
+                                    <div className="bg-white rounded-lg p-3 border border-slate-200">
+                                      <p className="text-xs text-slate-500 mb-2">Holiday Pay Calculation</p>
+                                      {Number(payroll.holidays) > 0 ? (
+                                        <>
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-sm font-medium text-slate-700">
+                                              {Number(payroll.holidays).toFixed(2)} holidays
+                                            </span>
+                                            <span className="text-slate-400">×</span>
+                                            <span className="text-sm font-medium text-slate-700">
+                                              {formatCurrency(payroll.employee?.ratePerDay || 0)}
+                                            </span>
+                                            <span className="text-slate-400">=</span>
+                                            <span className="text-base font-bold text-blue-600">
+                                              {formatCurrency(payroll.holidayPay)}
+                                            </span>
+                                          </div>
+                                          <p className="text-[10px] text-slate-400 mt-1">
+                                            Number of Holidays × Rate per Day
+                                          </p>
+                                        </>
+                                      ) : (
+                                        <p className="text-sm text-slate-400">No holidays in this period</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                   {/* Attendance & Work */}
                                   <div className="space-y-4">
@@ -438,13 +756,20 @@ export default function Payroll() {
                                         <input
                                           type="number"
                                           step="0.01"
-                                          defaultValue={payroll.holidays}
-                                          onBlur={(e) => handleFieldUpdate(payroll.id, 'holidays', e.target.value)}
+                                          defaultValue={payroll.holidays ? Number(payroll.holidays).toFixed(2) : '0.00'}
+                                          onBlur={(e) => {
+                                            const value = e.target.value;
+                                            // Format to 2 decimal places before saving
+                                            const formattedValue = value ? parseFloat(value).toFixed(2) : '0.00';
+                                            handleFieldUpdate(payroll.id, 'holidays', formattedValue);
+                                            // Update the input display to show formatted value
+                                            e.target.value = formattedValue;
+                                          }}
                                           className="input text-sm"
                                         />
                                         {Number(payroll.holidays) > 0 && (
-                                          <p className="text-[10px] text-blue-600 mt-1">
-                                            = {formatCurrency(payroll.holidayPay)}
+                                          <p className="text-[10px] text-blue-600 mt-1 font-medium">
+                                            {Number(payroll.holidays).toFixed(2)} × {formatCurrency(payroll.employee?.ratePerDay || 0)} = {formatCurrency(payroll.holidayPay)}
                                           </p>
                                         )}
                                       </div>
@@ -527,6 +852,20 @@ export default function Payroll() {
                                     </div>
                                   </div>
 
+                                  {/* Optional Deductions - Cash Advance */}
+                                  <div className="space-y-2">
+                                    <h4 className="font-semibold text-slate-900 text-sm">
+                                      Cash Advance
+                                      <span className="text-xs font-normal text-slate-500 ml-2">
+                                        (Optional)
+                                      </span>
+                                    </h4>
+                                    <OptionalDeductions 
+                                      payroll={payroll} 
+                                      onUpdate={() => {}} 
+                                    />
+                                  </div>
+
                                   {/* Deductions - Editable */}
                                   <div className="space-y-4">
                                     <h4 className="font-semibold text-slate-900">
@@ -585,19 +924,23 @@ export default function Payroll() {
 
                                 {/* Summary */}
                                 <div className="mt-6 pt-6 border-t grid grid-cols-2 md:grid-cols-5 gap-4">
-                                  <div className="text-center p-3 bg-white rounded-lg border">
-                                    <p className="text-xs text-slate-500">Basic Pay</p>
-                                    <p className="font-semibold">{formatCurrency(payroll.basicPay)}</p>
-                                    <p className="text-[10px] text-slate-400 mt-1">
+                                  <div className="text-center p-3 bg-white rounded-lg border border-primary-200">
+                                    <p className="text-xs text-slate-500 mb-1">Basic Pay</p>
+                                    <p className="font-bold text-lg text-primary-700">{formatCurrency(payroll.basicPay)}</p>
+                                    <p className="text-[10px] text-slate-500 mt-2 font-medium">
                                       {payroll.totalDaysPresent} days × {formatCurrency(payroll.employee?.ratePerDay || 0)}
                                     </p>
                                   </div>
-                                  <div className="text-center p-3 bg-white rounded-lg border">
-                                    <p className="text-xs text-slate-500">Holiday Pay</p>
-                                    <p className="font-semibold">{formatCurrency(payroll.holidayPay)}</p>
-                                    <p className="text-[10px] text-slate-400 mt-1">
-                                      {Number(payroll.holidays)} × {formatCurrency(payroll.employee?.ratePerDay || 0)}
-                                    </p>
+                                  <div className="text-center p-3 bg-white rounded-lg border border-blue-200">
+                                    <p className="text-xs text-slate-500 mb-1">Holiday Pay</p>
+                                    <p className="font-bold text-lg text-blue-700">{formatCurrency(payroll.holidayPay)}</p>
+                                    {Number(payroll.holidays) > 0 ? (
+                                      <p className="text-[10px] text-slate-500 mt-2 font-medium">
+                                        {Number(payroll.holidays).toFixed(2)} × {formatCurrency(payroll.employee?.ratePerDay || 0)}
+                                      </p>
+                                    ) : (
+                                      <p className="text-[10px] text-slate-400 mt-2">No holidays</p>
+                                    )}
                                   </div>
                                   <div className="text-center p-3 bg-white rounded-lg border">
                                     <p className="text-xs text-slate-500">Overtime Pay</p>
@@ -618,7 +961,7 @@ export default function Payroll() {
                               </td>
                             </tr>
                           )}
-                        </>
+                        </Fragment>
                       ))}
                     </tbody>
                   </table>
@@ -643,8 +986,11 @@ export default function Payroll() {
           <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex min-h-screen items-center justify-center p-4">
               <div className="fixed inset-0 bg-black/50" onClick={() => setIsCreateModalOpen(false)}></div>
-              <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-                <h2 className="text-xl font-semibold text-slate-900 mb-6">Create Payroll Period</h2>
+              <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md p-6 border border-slate-200">
+                <div className="mb-6 pb-4 border-b border-slate-200">
+                  <h2 className="text-2xl font-bold text-slate-900">Create Payroll Period</h2>
+                  <p className="text-sm text-slate-500 mt-1">Set up a new payroll period for employees</p>
+                </div>
 
                 <form onSubmit={handleCreateSubmit} className="space-y-4">
                   <div>

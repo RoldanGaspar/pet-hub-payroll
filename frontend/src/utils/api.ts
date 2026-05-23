@@ -115,6 +115,7 @@ export const incentiveSheetApi = {
   getConfig: () => api.get('/incentive-sheets/config'),
 };
 
+
 // Deduction API
 export const deductionApi = {
   getByPayroll: (payrollId: number) => api.get(`/deductions/payroll/${payrollId}`),

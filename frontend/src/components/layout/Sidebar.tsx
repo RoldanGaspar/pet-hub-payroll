@@ -32,13 +32,13 @@ export default function Sidebar() {
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 bg-slate-900 text-white">
       <div className="flex h-full flex-col">
         {/* Logo */}
-        <div className="flex h-16 items-center gap-3 px-6 border-b border-slate-700">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center">
-            <span className="text-xl font-bold">P</span>
+        <div className="flex h-16 items-center gap-3 px-6 border-b border-slate-700 bg-gradient-to-r from-slate-800 to-slate-900">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center shadow-lg">
+            <span className="text-xl font-bold text-white">P</span>
           </div>
           <div>
-            <h1 className="font-display font-bold text-lg leading-tight">Pet Hub</h1>
-            <p className="text-xs text-slate-400">Payroll System</p>
+            <h1 className="font-display font-bold text-lg leading-tight text-white">Pet Hub</h1>
+            <p className="text-xs text-slate-300 font-medium">Payroll System</p>
           </div>
         </div>
 
@@ -50,10 +50,10 @@ export default function Sidebar() {
               to={item.href}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
                   isActive
-                    ? 'bg-primary-600 text-white'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    ? 'bg-primary-600 text-white shadow-lg shadow-primary-600/20'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white hover:translate-x-1'
                 )
               }
             >
@@ -92,21 +92,21 @@ export default function Sidebar() {
         </nav>
 
         {/* User section */}
-        <div className="border-t border-slate-700 p-4">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center">
-              <span className="text-sm font-medium">
+        <div className="border-t border-slate-700 p-4 bg-gradient-to-t from-slate-800 to-slate-900">
+          <div className="flex items-center gap-3 mb-3 p-2 rounded-lg bg-slate-800/50">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center shadow-md">
+              <span className="text-sm font-bold text-white">
                 {user?.name?.charAt(0).toUpperCase()}
               </span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{user?.name}</p>
-              <p className="text-xs text-slate-400 truncate">{user?.role}</p>
+              <p className="text-sm font-semibold truncate text-white">{user?.name}</p>
+              <p className="text-xs text-slate-300 truncate font-medium">{user?.role}</p>
             </div>
           </div>
           <button
             onClick={logout}
-            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg transition-colors"
+            className="flex items-center gap-2 w-full px-3 py-2.5 text-sm font-medium text-slate-300 hover:bg-red-600 hover:text-white rounded-lg transition-all duration-200 hover:shadow-lg"
           >
             <LogOut className="h-4 w-4" />
             Sign out
