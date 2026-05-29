@@ -11,6 +11,8 @@ export type PositionType =
   | 'CLINIC_SECRETARY'
   | 'STAFF';
 
+export type RateCalculationMethod = 'MONTHLY' | 'ANNUAL';
+
 export interface User {
   id: number;
   email: string;
@@ -40,6 +42,7 @@ export interface Employee {
   branch?: Branch;
   name: string;
   position: PositionType;
+  calculationMethod: RateCalculationMethod;
   salary: number;
   ratePerDay: number;
   ratePerHour: number;

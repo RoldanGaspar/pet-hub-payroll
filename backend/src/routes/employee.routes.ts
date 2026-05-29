@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import prisma from '../utils/prisma';
 import { authMiddleware, AuthRequest } from '../middleware/auth.middleware';
-import { calculateEmployeeRates, DEFAULT_WORKING_DAYS_PER_MONTH, DEFAULT_WORKING_HOURS_PER_DAY, usesAnnualFormula, getRateFormulaDescription, calculatePayroll } from '../utils/payrollCalculations';
-import { PositionType } from '@prisma/client';
+import { calculateEmployeeRates, DEFAULT_WORKING_DAYS_PER_MONTH, DEFAULT_WORKING_HOURS_PER_DAY, usesAnnualFormula, getRateFormulaDescription, getRateFormulaDescriptionByMethod, getDefaultCalculationMethod, calculatePayroll } from '../utils/payrollCalculations';
+import { PositionType, RateCalculationMethod } from '@prisma/client';
 
 const router = Router();
 
@@ -74,8 +74,11 @@ router.get('/:id', authMiddleware, async (req: AuthRequest, res) => {
 router.get('/formula/:position', authMiddleware, async (req: AuthRequest, res) => {
   try {
     const position = req.params.position as PositionType;
-    const usesAnnual = usesAnnualFormula(position);
-    const description = getRateFormulaDescription(position);
+    const method = req.query.method as string | undefined;
+    const usesAnnual = method ? method === 'ANNUAL' : usesAnnualFormula(position);
+    const description = method 
+      ? getRateFormulaDescriptionByMethod(method as 'MONTHLY' | 'ANNUAL')
+      : getRateFormulaDescription(position);
     
     return res.json({
       position,
@@ -96,6 +99,7 @@ router.post('/', authMiddleware, async (req: AuthRequest, res) => {
       name,
       position,
       salary,
+      calculationMethod: rawCalcMethod,
       ratePerDay: customRatePerDay,
       ratePerHour: customRatePerHour,
       address,
@@ -106,6 +110,9 @@ router.post('/', authMiddleware, async (req: AuthRequest, res) => {
       hiredOn,
       fixedDeductions,
     } = req.body;
+
+    // Determine calculation method: use provided value, or fall back to default for position
+    const calculationMethod: RateCalculationMethod = rawCalcMethod || getDefaultCalculationMethod(position as PositionType);
 
     // Get branch settings for rate calculation (only used for Resident Vet)
     const branch = await prisma.branch.findUnique({
@@ -124,10 +131,10 @@ router.post('/', authMiddleware, async (req: AuthRequest, res) => {
       ratePerDay = parseFloat(customRatePerDay);
       ratePerHour = parseFloat(customRatePerHour);
     } else {
-      // Calculate using position-based formula
+      // Calculate using the selected calculation method
       const rates = calculateEmployeeRates(
         parseFloat(salary),
-        position as PositionType,
+        calculationMethod,
         workingDaysPerMonth,
         workingHoursPerDay
       );
@@ -140,6 +147,7 @@ router.post('/', authMiddleware, async (req: AuthRequest, res) => {
         branchId: parseInt(branchId),
         name,
         position,
+        calculationMethod,
         salary: parseFloat(salary),
         ratePerDay,
         ratePerHour,
@@ -181,6 +189,7 @@ router.put('/:id', authMiddleware, async (req: AuthRequest, res) => {
       name,
       position,
       salary,
+      calculationMethod: rawCalcMethod,
       ratePerDay: customRatePerDay,
       ratePerHour: customRatePerHour,
       recalculateRates, // Boolean: if true, recalculate rates from salary
@@ -227,6 +236,10 @@ router.put('/:id', authMiddleware, async (req: AuthRequest, res) => {
       isActive,
     };
 
+    // Handle calculationMethod update
+    const effectiveCalcMethod: RateCalculationMethod = rawCalcMethod || existingEmployee.calculationMethod;
+    updateData.calculationMethod = effectiveCalcMethod;
+
     // Handle salary and rate updates
     if (salary !== undefined) {
       updateData.salary = parseFloat(salary);
@@ -235,16 +248,20 @@ router.put('/:id', authMiddleware, async (req: AuthRequest, res) => {
     // Determine the position to use for calculation
     const effectivePosition = (position || existingEmployee.position) as PositionType;
 
+    // Check if calculation method changed — auto-recalculate if so
+    const calcMethodChanged = rawCalcMethod && rawCalcMethod !== existingEmployee.calculationMethod;
+
     // Handle rate updates
     if (customRatePerDay !== undefined && customRatePerHour !== undefined) {
       // CEO provided custom rates - use them
       updateData.ratePerDay = parseFloat(customRatePerDay);
       updateData.ratePerHour = parseFloat(customRatePerHour);
-    } else if (recalculateRates && salary !== undefined) {
-      // Salary changed and user wants to recalculate
+    } else if ((recalculateRates && salary !== undefined) || calcMethodChanged) {
+      // Salary changed and user wants to recalculate, or calculation method changed
+      const salaryToUse = salary !== undefined ? parseFloat(salary) : Number(existingEmployee.salary);
       const rates = calculateEmployeeRates(
-        parseFloat(salary),
-        effectivePosition,
+        salaryToUse,
+        effectiveCalcMethod,
         workingDaysPerMonth,
         workingHoursPerDay
       );
@@ -288,7 +305,7 @@ router.post('/:id/recalculate-rates', authMiddleware, async (req: AuthRequest, r
 
     const rates = calculateEmployeeRates(
       Number(employee.salary),
-      employee.position,
+      employee.calculationMethod as 'MONTHLY' | 'ANNUAL',
       workingDaysPerMonth,
       workingHoursPerDay
     );

@@ -36,6 +36,11 @@ enum PositionType {
   STAFF
 }
 
+enum RateCalculationMethod {
+  MONTHLY  // Rate/Day = Salary ÷ D (branch working days per month)
+  ANNUAL   // Rate/Day = (Salary × 12) ÷ 313
+}
+
 model User {
   id        Int      @id @default(autoincrement())
   email     String   @unique
@@ -70,6 +75,7 @@ model Employee {
   branch          Branch           @relation(fields: [branchId], references: [id])
   name            String
   position        PositionType
+  calculationMethod RateCalculationMethod @default(ANNUAL)
   salary          Decimal          @db.Decimal(12, 2)
   ratePerDay      Decimal          @db.Decimal(12, 6)
   ratePerHour     Decimal          @db.Decimal(12, 6)

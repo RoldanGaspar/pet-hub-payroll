@@ -7,9 +7,6 @@ const router = Router();
 
 // Get all payroll periods
 router.get('/', authMiddleware, async (req: AuthRequest, res) => {
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/0b3fc8b0-8a35-4408-bc81-949c8ae1c64e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payroll.routes.ts:9',message:'GET /payrolls - Entry',data:{query:req.query},timestamp:Date.now(),runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
   try {
     const { branchId, startDate, endDate, status } = req.query;
 
@@ -44,45 +41,8 @@ router.get('/', authMiddleware, async (req: AuthRequest, res) => {
       orderBy: [{ startDate: 'desc' }, { employee: { name: 'asc' } }],
     });
 
-
-    // #region agent log
-    try {
-      const testSerialization = JSON.stringify(payrolls[0] || {});
-      fetch('http://127.0.0.1:7243/ingest/0b3fc8b0-8a35-4408-bc81-949c8ae1c64e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payroll.routes.ts:44',message:'Serialization test passed',data:{canSerialize:true,serializedLength:testSerialization.length},timestamp:Date.now(),runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    } catch (serialErr: any) {
-      fetch('http://127.0.0.1:7243/ingest/0b3fc8b0-8a35-4408-bc81-949c8ae1c64e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payroll.routes.ts:44',message:'Serialization test FAILED',data:{error:serialErr?.message},timestamp:Date.now(),runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    }
-    // #endregion
-
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/0b3fc8b0-8a35-4408-bc81-949c8ae1c64e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payroll.routes.ts:73',message:'Before res.json()',data:{payrollCount:payrolls.length,totalSize:JSON.stringify(payrolls).length},timestamp:Date.now(),runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-    // #endregion
-
-    // #region agent log
-    try {
-      const fullSerialization = JSON.stringify(payrolls);
-      fetch('http://127.0.0.1:7243/ingest/0b3fc8b0-8a35-4408-bc81-949c8ae1c64e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payroll.routes.ts:73',message:'Full serialization test',data:{success:true,size:fullSerialization.length},timestamp:Date.now(),runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-    } catch (fullErr: any) {
-      fetch('http://127.0.0.1:7243/ingest/0b3fc8b0-8a35-4408-bc81-949c8ae1c64e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payroll.routes.ts:73',message:'Full serialization FAILED',data:{error:fullErr?.message},timestamp:Date.now(),runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-    }
-    // #endregion
-
-    try {
-      res.json(payrolls);
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/0b3fc8b0-8a35-4408-bc81-949c8ae1c64e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payroll.routes.ts:73',message:'res.json() called successfully',data:{},timestamp:Date.now(),runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-      // #endregion
-    } catch (jsonErr: any) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/0b3fc8b0-8a35-4408-bc81-949c8ae1c64e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payroll.routes.ts:73',message:'res.json() FAILED',data:{error:jsonErr?.message,stack:jsonErr?.stack?.substring(0,500)},timestamp:Date.now(),runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-      // #endregion
-      throw jsonErr;
-    }
-    return;
+    return res.json(payrolls);
   } catch (error: any) {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/0b3fc8b0-8a35-4408-bc81-949c8ae1c64e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payroll.routes.ts:45',message:'Error caught',data:{errorMessage:error?.message,errorCode:error?.code,errorName:error?.name,stack:error?.stack?.substring(0,500)},timestamp:Date.now(),runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
     console.error('Get payrolls error:', error);
     console.error('Error details:', error?.message, error?.stack);
     return res.status(500).json({ 

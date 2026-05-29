@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import prisma from '../utils/prisma';
 import { authMiddleware, AuthRequest } from '../middleware/auth.middleware';
-import { calculateEmployeeRates, DEFAULT_WORKING_DAYS_PER_MONTH, DEFAULT_WORKING_HOURS_PER_DAY, usesAnnualFormula } from '../utils/payrollCalculations';
-import { PositionType } from '@prisma/client';
+import { calculateEmployeeRates, DEFAULT_WORKING_DAYS_PER_MONTH, DEFAULT_WORKING_HOURS_PER_DAY } from '../utils/payrollCalculations';
+import { RateCalculationMethod } from '@prisma/client';
 
 const router = Router();
 
@@ -116,8 +116,9 @@ router.put('/:id', authMiddleware, async (req: AuthRequest, res) => {
       },
     });
 
-    // If D or H changed, only recalculate rates for RESIDENT_VETERINARIAN employees
-    // Other positions use annual formula which doesn't depend on branch D/H settings
+    // If D or H changed, recalculate rates for ALL employees in this branch
+    // Both MONTHLY and ANNUAL formulas use H (working hours per day) for Rate/Hour
+    // MONTHLY also uses D (working days per month) for Rate/Day
     if (rateSettingsChanged) {
       const employees = await prisma.employee.findMany({
         where: { branchId: parseInt(id), isActive: true },
@@ -125,24 +126,21 @@ router.put('/:id', authMiddleware, async (req: AuthRequest, res) => {
 
       let recalculatedCount = 0;
       for (const employee of employees) {
-        // Only recalculate if this position uses the monthly formula (not annual)
-        if (!usesAnnualFormula(employee.position as PositionType)) {
-          const { ratePerDay, ratePerHour } = calculateEmployeeRates(
-            Number(employee.salary),
-            employee.position as PositionType,
-            newWorkingDaysPerMonth,
-            newWorkingHoursPerDay
-          );
+        const { ratePerDay, ratePerHour } = calculateEmployeeRates(
+          Number(employee.salary),
+          employee.calculationMethod as 'MONTHLY' | 'ANNUAL',
+          newWorkingDaysPerMonth,
+          newWorkingHoursPerDay
+        );
 
-          await prisma.employee.update({
-            where: { id: employee.id },
-            data: { ratePerDay, ratePerHour },
-          });
-          recalculatedCount++;
-        }
+        await prisma.employee.update({
+          where: { id: employee.id },
+          data: { ratePerDay, ratePerHour },
+        });
+        recalculatedCount++;
       }
 
-      console.log(`Recalculated rates for ${recalculatedCount} Resident Veterinarian(s) in branch ${branch.name}`);
+      console.log(`Recalculated rates for ${recalculatedCount} employee(s) in branch ${branch.name}`);
     }
 
     return res.json(branch);

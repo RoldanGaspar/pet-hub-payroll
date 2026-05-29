@@ -510,7 +510,7 @@ Creates:
 
 ## 17. Known Issues / Debug Artifacts
 
-The `payroll.routes.ts` file contains **debug logging code** (fetch calls to `http://127.0.0.1:7243/ingest/...`) wrapped in `// #region agent log` comments. These are leftover from debugging and should be cleaned up for production.
+- **Debug Telemetry Leftovers**: Cleaned up! The debug logging fetch calls wrapped in `// #region agent log` comments in `payroll.routes.ts` have been successfully removed for clean production-ready code.
 
 ---
 

@@ -67,11 +67,16 @@ export const DEFAULT_WORKING_DAYS_PER_MONTH = 22;
 export const DEFAULT_WORKING_HOURS_PER_DAY = 8;
 export const ANNUAL_WORKING_DAYS = 313; // Used for annual formula
 
-// Check if a position uses the annual formula
-// Only RESIDENT_VETERINARIAN uses monthly formula (branch D/H)
-// All other positions use annual formula: (Salary × 12) ÷ 313
+// Check if a position uses the annual formula (legacy helper, kept for backward compatibility)
+// Only RESIDENT_VETERINARIAN defaults to monthly formula (branch D/H)
+// All other positions default to annual formula: (Salary × 12) ÷ 313
 export function usesAnnualFormula(position: PositionType): boolean {
   return position !== PositionType.RESIDENT_VETERINARIAN;
+}
+
+// Get default calculation method for a position (used when creating new employees)
+export function getDefaultCalculationMethod(position: PositionType): 'MONTHLY' | 'ANNUAL' {
+  return position === PositionType.RESIDENT_VETERINARIAN ? 'MONTHLY' : 'ANNUAL';
 }
 
 // Calculate rates using MONTHLY formula (for Resident Veterinarians)
@@ -89,13 +94,14 @@ export function calculateMonthlyRates(
 
 // Calculate rates using ANNUAL formula (for all positions except Resident Vet)
 // Rate/Day = (Salary × 12) ÷ 313
-// Rate/Hour = Rate/Day ÷ 8
+// Rate/Hour = Rate/Day ÷ H (branch working hours per day)
 export function calculateAnnualRates(
-  monthlySalary: number
+  monthlySalary: number,
+  workingHoursPerDay: number = DEFAULT_WORKING_HOURS_PER_DAY
 ): { ratePerDay: number; ratePerHour: number } {
   const annualSalary = monthlySalary * 12;
   const ratePerDay = Math.round((annualSalary / ANNUAL_WORKING_DAYS) * 100) / 100;
-  const ratePerHour = Math.round((ratePerDay / 8) * 100) / 100;
+  const ratePerHour = Math.round((ratePerDay / workingHoursPerDay) * 100) / 100;
   return { ratePerDay, ratePerHour };
 }
 
@@ -117,25 +123,34 @@ export function calculateRatePerHour(
   return Math.round((ratePerDay / workingHoursPerDay) * 1000000) / 1000000;
 }
 
-// Calculate employee rates based on position
-// - Resident Veterinarian: Monthly formula using branch D/H settings
-// - All others: Annual formula (Salary × 12 ÷ 313)
+// Calculate employee rates based on calculationMethod
+// - MONTHLY: Monthly formula using branch D/H settings (Salary ÷ D)
+// - ANNUAL: Annual formula (Salary × 12 ÷ 313)
 export function calculateEmployeeRates(
   monthlySalary: number,
-  position: PositionType,
+  calculationMethod: 'MONTHLY' | 'ANNUAL',
   workingDaysPerMonth: number = DEFAULT_WORKING_DAYS_PER_MONTH,
   workingHoursPerDay: number = DEFAULT_WORKING_HOURS_PER_DAY
 ): { ratePerDay: number; ratePerHour: number } {
-  if (usesAnnualFormula(position)) {
-    return calculateAnnualRates(monthlySalary);
+  if (calculationMethod === 'ANNUAL') {
+    return calculateAnnualRates(monthlySalary, workingHoursPerDay);
   } else {
     return calculateMonthlyRates(monthlySalary, workingDaysPerMonth, workingHoursPerDay);
   }
 }
 
-// Get the formula description for a position (for UI display)
+// Get the formula description for a position (legacy, for backward compatibility)
 export function getRateFormulaDescription(position: PositionType): string {
   if (usesAnnualFormula(position)) {
+    return 'Annual: (Salary × 12) ÷ 313';
+  } else {
+    return 'Monthly: Salary ÷ D (branch days)';
+  }
+}
+
+// Get the formula description by calculation method (for UI display)
+export function getRateFormulaDescriptionByMethod(method: 'MONTHLY' | 'ANNUAL'): string {
+  if (method === 'ANNUAL') {
     return 'Annual: (Salary × 12) ÷ 313';
   } else {
     return 'Monthly: Salary ÷ D (branch days)';

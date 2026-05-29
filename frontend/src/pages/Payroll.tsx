@@ -342,7 +342,7 @@ export default function Payroll() {
 
   const applyFixedDeductionsMutation = useMutation({
     mutationFn: (payrollId: number) => deductionApi.applyFixed(payrollId),
-    onSuccess: (data, payrollId) => {
+    onSuccess: (_, payrollId) => {
       // Invalidate both the list and the specific payroll query
       queryClient.invalidateQueries({ queryKey: ['payrolls'] });
       queryClient.invalidateQueries({ queryKey: ['payroll', payrollId] });

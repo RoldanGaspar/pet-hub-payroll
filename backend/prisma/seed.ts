@@ -171,24 +171,24 @@ async function main() {
   const ANNUAL_WORKING_DAYS = 313;
 
   // Position-based rate calculation
-  // - Resident Veterinarian: Monthly formula (Salary / D)
-  // - All others: Annual formula ((Salary × 12) / 313)
+  // - MONTHLY: Monthly formula (Salary / D)
+  // - ANNUAL: Annual formula ((Salary × 12) / 313)
   function calculateEmployeeRates(
     salary: number,
-    position: PositionType,
+    calculationMethod: 'MONTHLY' | 'ANNUAL',
     branchDaysPerMonth: number,
     branchHoursPerDay: number
   ): { ratePerDay: number; ratePerHour: number } {
-    if (position === PositionType.RESIDENT_VETERINARIAN) {
-      // Monthly formula for Resident Veterinarian
+    if (calculationMethod === 'MONTHLY') {
+      // Monthly formula for employees using MONTHLY method
       const ratePerDay = Math.round((salary / branchDaysPerMonth) * 100) / 100;
       const ratePerHour = Math.round((ratePerDay / branchHoursPerDay) * 100) / 100;
       return { ratePerDay, ratePerHour };
     } else {
-      // Annual formula for all other positions: (Salary × 12) ÷ 313
+      // Annual formula for employees using ANNUAL method: (Salary × 12) ÷ 313
       const annualSalary = salary * 12;
       const ratePerDay = Math.round((annualSalary / ANNUAL_WORKING_DAYS) * 100) / 100;
-      const ratePerHour = Math.round((ratePerDay / 8) * 100) / 100;
+      const ratePerHour = Math.round((ratePerDay / branchHoursPerDay) * 100) / 100;
       return { ratePerDay, ratePerHour };
     }
   }
@@ -226,6 +226,7 @@ async function main() {
       {
         name: 'Dr. Karmella Joy B. Mamangun',
         position: 'RESIDENT_VETERINARIAN' as const,
+        calculationMethod: 'MONTHLY' as const,
         salary: 45000,
         address: 'San Pedro II, Magalang, Pampanga',
         hiredOn: new Date('2024-04-19'),
@@ -233,6 +234,7 @@ async function main() {
       {
         name: 'Dr. Ian Carlo Antonio',
         position: 'JUNIOR_VETERINARIAN' as const,
+        calculationMethod: 'ANNUAL' as const,
         salary: 35000,
         address: 'Sta. Maria, Magalang, Pampanga',
         hiredOn: new Date('2025-11-15'),
@@ -240,6 +242,7 @@ async function main() {
       {
         name: 'Dr. Grace Mary D. Fogata',
         position: 'JUNIOR_VETERINARIAN' as const,
+        calculationMethod: 'ANNUAL' as const,
         salary: 40000,
         address: 'Dona Belen Subd., Angeles City, Pampanga',
         hiredOn: new Date('2021-07-10'),
@@ -247,6 +250,7 @@ async function main() {
       {
         name: 'Nico Cabilangan',
         position: 'GROOMER' as const,
+        calculationMethod: 'ANNUAL' as const,
         salary: 16000,
         address: 'Concepcion, Tarlac',
         hiredOn: new Date('2025-09-11'),
@@ -254,6 +258,7 @@ async function main() {
       {
         name: 'Jerold Andaya',
         position: 'GROOMER_VET_ASSISTANT' as const,
+        calculationMethod: 'ANNUAL' as const,
         salary: 14300,
         address: '725 Ma. Teresita St Sta Clara Subd',
         hiredOn: new Date('2025-05-28'),
@@ -261,6 +266,7 @@ async function main() {
       {
         name: 'Philip Ganaden',
         position: 'VETERINARY_ASSISTANT' as const,
+        calculationMethod: 'ANNUAL' as const,
         salary: 15500,
         address: 'San Francisco, Agoo, La Union',
         hiredOn: new Date('2022-11-22'),
@@ -274,7 +280,7 @@ async function main() {
       // - All others: (Salary × 12) / 313 (annual formula)
       const { ratePerDay, ratePerHour } = calculateEmployeeRates(
         emp.salary,
-        emp.position,
+        emp.calculationMethod,
         DEFAULT_WORKING_DAYS_PER_MONTH,
         DEFAULT_WORKING_HOURS_PER_DAY
       );

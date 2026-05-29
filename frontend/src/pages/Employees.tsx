@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Edit, Trash2, Users, Search, Info, Receipt, Ban } from 'lucide-react';
 import Header from '../components/layout/Header';
 import { employeeApi, branchApi } from '../utils/api';
-import { Employee, Branch, POSITION_LABELS, PositionType } from '../types';
+import { Employee, Branch, POSITION_LABELS, PositionType, RateCalculationMethod } from '../types';
 import { formatCurrency, cn } from '../utils/helpers';
 import FixedDeductionsModal from '../components/FixedDeductionsModal';
 import IncentiveExclusionsModal from '../components/IncentiveExclusionsModal';
@@ -13,23 +13,18 @@ const ANNUAL_WORKING_DAYS = 313;
 const DEFAULT_WORKING_DAYS_PER_MONTH = 22;
 const DEFAULT_WORKING_HOURS_PER_DAY = 8;
 
-// Check if position uses annual formula
-function usesAnnualFormula(position: PositionType): boolean {
-  return position !== 'RESIDENT_VETERINARIAN';
-}
-
-// Calculate rates based on position
+// Calculate rates based on calculation method (no longer position-dependent)
 function calculateRates(
   salary: number,
-  position: PositionType,
+  calculationMethod: RateCalculationMethod,
   branchDaysPerMonth: number = DEFAULT_WORKING_DAYS_PER_MONTH,
   branchHoursPerDay: number = DEFAULT_WORKING_HOURS_PER_DAY
 ): { ratePerDay: number; ratePerHour: number } {
-  if (usesAnnualFormula(position)) {
-    // Annual formula: (Salary × 12) ÷ 313
+  if (calculationMethod === 'ANNUAL') {
+    // Annual formula: (Salary × 12) ÷ 313, then Rate/Hour = Rate/Day ÷ H
     const annualSalary = salary * 12;
     const ratePerDay = Math.round((annualSalary / ANNUAL_WORKING_DAYS) * 100) / 100;
-    const ratePerHour = Math.round((ratePerDay / 8) * 100) / 100;
+    const ratePerHour = Math.round((ratePerDay / branchHoursPerDay) * 100) / 100;
     return { ratePerDay, ratePerHour };
   } else {
     // Monthly formula: Salary ÷ D (branch days)
@@ -39,12 +34,17 @@ function calculateRates(
   }
 }
 
-// Get formula description
-function getFormulaDescription(position: PositionType): string {
-  if (usesAnnualFormula(position)) {
+// Get formula description based on calculation method
+function getFormulaDescription(calculationMethod: RateCalculationMethod): string {
+  if (calculationMethod === 'ANNUAL') {
     return 'Annual: (Salary × 12) ÷ 313';
   }
   return 'Monthly: Salary ÷ D (branch days)';
+}
+
+// Get default calculation method for a position (suggestion only, not enforced)
+function getDefaultCalculationMethod(position: PositionType): RateCalculationMethod {
+  return position === 'RESIDENT_VETERINARIAN' ? 'MONTHLY' : 'ANNUAL';
 }
 
 export default function Employees() {
@@ -59,6 +59,7 @@ export default function Employees() {
     branchId: '',
     name: '',
     position: 'VETERINARY_ASSISTANT' as PositionType,
+    calculationMethod: 'ANNUAL' as RateCalculationMethod,
     salary: '',
     ratePerDay: '',
     ratePerHour: '',
@@ -89,20 +90,20 @@ export default function Employees() {
     return branches.find((b: Branch) => b.id === parseInt(formData.branchId));
   }, [formData.branchId, branches]);
 
-  // Calculate rates when salary or position changes (for new employees or when recalculate is checked)
+  // Calculate rates when salary or calculationMethod changes (for new employees or when recalculate is checked)
   useEffect(() => {
     const salaryValue = parseFloat(formData.salary) || 0;
     if (salaryValue > 0 && (!editingEmployee || recalculateRates)) {
       const branchDays = selectedBranchData?.workingDaysPerMonth ?? DEFAULT_WORKING_DAYS_PER_MONTH;
       const branchHours = selectedBranchData?.workingHoursPerDay ?? DEFAULT_WORKING_HOURS_PER_DAY;
-      const rates = calculateRates(salaryValue, formData.position, branchDays, branchHours);
+      const rates = calculateRates(salaryValue, formData.calculationMethod, branchDays, branchHours);
       setFormData(prev => ({
         ...prev,
-        ratePerDay: rates.ratePerDay.toString(),
-        ratePerHour: rates.ratePerHour.toString(),
+        ratePerDay: rates.ratePerDay.toFixed(2),
+        ratePerHour: rates.ratePerHour.toFixed(2),
       }));
     }
-  }, [formData.salary, formData.position, formData.branchId, selectedBranchData, editingEmployee, recalculateRates]);
+  }, [formData.salary, formData.calculationMethod, formData.branchId, selectedBranchData, editingEmployee, recalculateRates]);
 
   const createMutation = useMutation({
     mutationFn: (data: any) => employeeApi.create(data),
@@ -156,9 +157,10 @@ export default function Employees() {
         branchId: employee.branchId.toString(),
         name: employee.name,
         position: employee.position,
+        calculationMethod: employee.calculationMethod || getDefaultCalculationMethod(employee.position),
         salary: employee.salary.toString(),
-        ratePerDay: employee.ratePerDay.toString(),
-        ratePerHour: employee.ratePerHour.toString(),
+        ratePerDay: Number(employee.ratePerDay).toFixed(2),
+        ratePerHour: Number(employee.ratePerHour).toFixed(2),
         address: employee.address || '',
         sssNo: employee.sssNo || '',
         tinNo: employee.tinNo || '',
@@ -173,6 +175,7 @@ export default function Employees() {
         branchId: selectedBranch || (branches?.[0]?.id?.toString() || ''),
         name: '',
         position: 'VETERINARY_ASSISTANT',
+        calculationMethod: 'ANNUAL',
         salary: '',
         ratePerDay: '',
         ratePerHour: '',
@@ -219,7 +222,7 @@ export default function Employees() {
     emp.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const formulaDescription = getFormulaDescription(formData.position);
+  const formulaDescription = getFormulaDescription(formData.calculationMethod);
 
   return (
     <>
@@ -465,10 +468,80 @@ export default function Employees() {
                     <div className="md:col-span-2 border-2 border-primary-200 rounded-lg p-5 bg-gradient-to-br from-primary-50 to-white">
                       <div className="flex items-center justify-between mb-4">
                         <h4 className="font-semibold text-slate-900 text-base">Rate Calculation</h4>
-                        <div className="flex items-center gap-2 text-xs font-medium px-3 py-1.5 bg-primary-100 text-primary-700 rounded-full">
-                          <Info className="h-3.5 w-3.5" />
-                          <span>{formulaDescription}</span>
+                      </div>
+
+                      {/* Two-Button Formula Selector */}
+                      <div className="mb-4">
+                        <label className="label mb-2">Calculation Method</label>
+                        <div className="grid grid-cols-2 gap-3">
+                          {/* Annual Formula Button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormData({ ...formData, calculationMethod: 'ANNUAL' });
+                              setRecalculateRates(true);
+                            }}
+                            className={cn(
+                              'relative flex flex-col items-center gap-1.5 p-4 rounded-xl border-2 transition-all duration-200 cursor-pointer',
+                              formData.calculationMethod === 'ANNUAL'
+                                ? 'border-primary-500 bg-primary-50 shadow-md shadow-primary-100 ring-1 ring-primary-200'
+                                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                            )}
+                          >
+                            {formData.calculationMethod === 'ANNUAL' && (
+                              <div className="absolute top-2 right-2 w-5 h-5 bg-primary-500 rounded-full flex items-center justify-center">
+                                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                              </div>
+                            )}
+                            <span className={cn(
+                              'text-sm font-bold',
+                              formData.calculationMethod === 'ANNUAL' ? 'text-primary-700' : 'text-slate-700'
+                            )}>Annual Formula</span>
+                            <span className={cn(
+                              'text-xs text-center leading-relaxed',
+                              formData.calculationMethod === 'ANNUAL' ? 'text-primary-600' : 'text-slate-500'
+                            )}>(Salary × 12) ÷ 313</span>
+                          </button>
+
+                          {/* Monthly Formula Button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormData({ ...formData, calculationMethod: 'MONTHLY' });
+                              setRecalculateRates(true);
+                            }}
+                            className={cn(
+                              'relative flex flex-col items-center gap-1.5 p-4 rounded-xl border-2 transition-all duration-200 cursor-pointer',
+                              formData.calculationMethod === 'MONTHLY'
+                                ? 'border-amber-500 bg-amber-50 shadow-md shadow-amber-100 ring-1 ring-amber-200'
+                                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                            )}
+                          >
+                            {formData.calculationMethod === 'MONTHLY' && (
+                              <div className="absolute top-2 right-2 w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center">
+                                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                              </div>
+                            )}
+                            <span className={cn(
+                              'text-sm font-bold',
+                              formData.calculationMethod === 'MONTHLY' ? 'text-amber-700' : 'text-slate-700'
+                            )}>Monthly Formula</span>
+                            <span className={cn(
+                              'text-xs text-center leading-relaxed',
+                              formData.calculationMethod === 'MONTHLY' ? 'text-amber-600' : 'text-slate-500'
+                            )}>Salary ÷ D (branch days)</span>
+                          </button>
                         </div>
+                      </div>
+
+                      {/* Active formula indicator */}
+                      <div className="flex items-center gap-2 text-xs font-medium px-3 py-1.5 bg-primary-100 text-primary-700 rounded-full w-fit mb-4">
+                        <Info className="h-3.5 w-3.5" />
+                        <span>{formulaDescription}</span>
                       </div>
 
                       {/* Recalculate checkbox - only shown when editing */}
@@ -523,7 +596,7 @@ export default function Employees() {
 
                       {parseFloat(formData.salary) > 0 && (
                         <p className="text-xs text-slate-500 mt-2">
-                          {usesAnnualFormula(formData.position) ? (
+                          {formData.calculationMethod === 'ANNUAL' ? (
                             <>Formula: ({formatCurrency(parseFloat(formData.salary))} × 12) ÷ 313 = {formatCurrency(parseFloat(formData.ratePerDay))}/day</>
                           ) : (
                             <>Formula: {formatCurrency(parseFloat(formData.salary))} ÷ {selectedBranchData?.workingDaysPerMonth ?? DEFAULT_WORKING_DAYS_PER_MONTH} = {formatCurrency(parseFloat(formData.ratePerDay))}/day</>
