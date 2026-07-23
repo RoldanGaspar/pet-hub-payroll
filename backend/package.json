@@ -13,7 +13,10 @@
     "db:push": "prisma db push",
     "db:push:force": "prisma db push --accept-data-loss",
     "db:generate": "prisma generate",
-    "db:seed": "ts-node-dev prisma/seed.ts"
+    "db:seed": "ts-node-dev prisma/seed.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [],
   "author": "",
@@ -41,8 +44,11 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.0.8",
     "@types/pg": "^8.16.0",
+    "@types/supertest": "^7.2.1",
     "prisma": "^7.2.0",
+    "supertest": "^7.2.2",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
   }
 }
