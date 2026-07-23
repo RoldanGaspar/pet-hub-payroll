@@ -221,7 +221,7 @@ export class PayrollService {
         overtimePay: calculation.overtimePay,
         totalIncentives,
         grossPay: calculation.grossPay,
-        totalDeductions: totalDeductions + calculation.lateDeduction,
+        totalDeductions,
         netPay: calculation.netPay,
         status: data.status ?? existing.status,
       },

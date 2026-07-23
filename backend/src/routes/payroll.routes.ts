@@ -255,7 +255,7 @@ router.put('/:id', authMiddleware, async (req: AuthRequest, res) => {
         overtimePay: calculation.overtimePay,
         totalIncentives,
         grossPay: calculation.grossPay,
-        totalDeductions: totalDeductions + calculation.lateDeduction,
+            totalDeductions, // Store only sum of deduction line items (late deduction handled by formula)
         netPay: calculation.netPay,
         status: status ?? existing.status,
       },
@@ -327,7 +327,7 @@ router.post('/:id/calculate', authMiddleware, async (req: AuthRequest, res) => {
         overtimePay: calculation.overtimePay,
         totalIncentives,
         grossPay: calculation.grossPay,
-        totalDeductions: totalDeductions + calculation.lateDeduction,
+            totalDeductions, // Store only sum of deduction line items (late deduction handled by formula)
         netPay: calculation.netPay,
       },
       include: {

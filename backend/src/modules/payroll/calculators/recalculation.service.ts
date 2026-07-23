@@ -44,7 +44,7 @@ export class RecalculationService {
       data: {
         totalDaysPresent: calculatedDaysPresent,
         totalIncentives,
-        totalDeductions: totalDeductions + calculation.lateDeduction,
+        totalDeductions,
         basicPay: calculation.basicPay,
         holidayPay: calculation.holidayPay,
         overtimePay: calculation.overtimePay,
