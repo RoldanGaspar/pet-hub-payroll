@@ -7,7 +7,7 @@ import authRoutes from './routes/auth.routes';
 import branchRoutes from './routes/branch.routes';
 import employeeRoutes from './routes/employee.routes';
 import payrollRoutes from './modules/payroll/payroll.routes';
-import incentiveRoutes from './routes/incentive.routes';
+import incentiveRoutes from './modules/incentives/incentive.routes';
 import incentiveSheetRoutes from './routes/incentive-sheet.routes';
 import deductionRoutes from './routes/deduction.routes';
 import cashAdvanceRoutes from './routes/cashAdvance.routes';
