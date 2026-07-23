@@ -508,60 +508,10 @@ router.delete('/:id', authMiddleware, async (req: AuthRequest, res) => {
 });
 
 // Helper function to recalculate payroll totals
+// Delegates to the centralized RecalculationService
 async function recalculatePayrollTotals(payrollId: number) {
-  const allIncentives = await prisma.incentive.findMany({
-    where: { payrollId },
-  });
-  const totalIncentives = allIncentives.reduce((sum, i) => sum + Number(i.amount), 0);
-
-  const payroll = await prisma.payrollPeriod.findUnique({
-    where: { id: payrollId },
-    include: { employee: true },
-  });
-
-  if (!payroll) return;
-
-  const allDeductions = await prisma.deduction.findMany({
-    where: { payrollId },
-  });
-  const totalDeductions = allDeductions.reduce((sum, d) => sum + Number(d.amount), 0);
-
-  const ratePerDay = Number(payroll.employee.ratePerDay);
-  const ratePerHour = Number(payroll.employee.ratePerHour);
-
-  // Recalculate totalDaysPresent: Working Days - Rest Days (dayOff) - Absences
-  const calculatedDaysPresent = payroll.workingDays - payroll.dayOff - payroll.absences;
-
-  const basicPay = ratePerDay * calculatedDaysPresent;
-  const holidayPayRaw = Number(payroll.holidays) * ratePerDay;
-  const holidayPay = Math.floor(holidayPayRaw * 100) / 100; // Truncate: 797.446 → 797.44
-  const overtimePay = ratePerHour * Number(payroll.overtimeHours);
-  const lateDeduction = ratePerHour * (Number(payroll.lateMinutes) / 60);
-
-  const grossPay =
-    basicPay +
-    holidayPay + // Use truncated holiday pay value
-    overtimePay +
-    totalIncentives +
-    Number(payroll.mealAllowance) +
-    Number(payroll.silPay) +
-    Number(payroll.birthdayLeave);
-
-  const netPay = grossPay - totalDeductions - lateDeduction;
-
-  await prisma.payrollPeriod.update({
-    where: { id: payrollId },
-    data: {
-      totalDaysPresent: calculatedDaysPresent, // Update with recalculated value
-      totalIncentives,
-      totalDeductions,
-      basicPay: Math.round(basicPay * 100) / 100,
-      holidayPay: holidayPay, // Already truncated
-      overtimePay: Math.round(overtimePay * 100) / 100,
-      grossPay: Math.round(grossPay * 100) / 100,
-      netPay: Math.floor(netPay * 100) / 100, // Truncate net pay: 10,515.816 → 10,515.81
-    },
-  });
+  const service = new (await import('../modules/payroll/calculators/recalculation.service')).RecalculationService();
+  await service.recalculate(payrollId);
 }
 
 export default router;
