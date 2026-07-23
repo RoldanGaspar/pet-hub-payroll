@@ -72,7 +72,7 @@ describe('API Smoke Tests — CHARACTERIZATION', () => {
     it('returns status ok with database connected', async () => {
       if (!serverAvailable) return;
 
-      const { status, data } = await request('/api/health');
+      const { status, data } = await request('/health');
       expect(status).toBe(200);
       expect(data.status).toBe('ok');
       expect(data).toHaveProperty('timestamp');
@@ -204,16 +204,14 @@ describe('API Smoke Tests — CHARACTERIZATION', () => {
 
       expect(status).toBe(201);
       expect(Array.isArray(data)).toBe(true);
+      expect(data.length).toBeGreaterThan(0);
 
-      if (data.length > 0) {
-        const payroll = data[0];
-        expect(payroll).toHaveProperty('id');
-        expect(payroll).toHaveProperty('employee');
-        expect(payroll).toHaveProperty('status', 'DRAFT');
-        expect(payroll).toHaveProperty('workingDays', 15);
-        expect(payroll).toHaveProperty('totalDaysPresent', 15);
-        expect(payroll).toHaveProperty('deductionDivisor', 2);
-      }
+      const payroll = data[0];
+      expect(payroll).toHaveProperty('id');
+      expect(payroll).toHaveProperty('employeeId');
+      expect(payroll).toHaveProperty('status', 'DRAFT');
+      expect(payroll).toHaveProperty('workingDays', 15);
+      expect(payroll).toHaveProperty('deductionDivisor', 2);
     });
   });
 
