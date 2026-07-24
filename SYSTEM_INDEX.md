@@ -1,6 +1,8 @@
 # Pet Hub Payroll System — Complete System Index
 
 > **Purpose**: This document is the single source of truth for any AI assistant working on this codebase. It covers architecture, business logic, database schema, API endpoints, frontend structure, calculation formulas, and deployment.
+>
+> **Last Updated**: 2026-07-24 | **Current Branch**: `refactor/modular-monolith`
 
 ---
 
@@ -37,20 +39,23 @@
 | **Database** | PostgreSQL | 14+ |
 | **Auth** | JWT (jsonwebtoken) + bcryptjs | — |
 | **Security** | Helmet, express-rate-limit, CORS | — |
+| **Validation** | Zod (backend + frontend) | 4.x |
+| **Logging** | Winston | 3.x |
+| **Testing** | Vitest + Supertest | 4.x / 7.x |
 | **Deployment** | Railway (Nixpacks) | — |
 
 ---
 
 ## 3. Project Structure
 
-**Architecture**: Modular Monolith (Services + Calculators + Thin Routes)
+**Architecture**: Modular Monolith (Routes → Services → Calculators + Shared Infrastructure)
 
 ```
 PHPS/
 ├── README.md
 ├── SYSTEM_INDEX.md
 ├── RAILWAY_DEPLOYMENT.md
-├── .github/workflows/backend-ci.yml   # CI/CD pipeline
+├── .gitignore
 ├── backend/
 │   ├── .env / .env.example
 │   ├── package.json
@@ -58,78 +63,108 @@ PHPS/
 │   ├── prisma.config.ts
 │   ├── nixpacks.toml
 │   ├── vitest.config.ts               # Test runner config
+│   ├── railway-build.sh               # Railway build script
+│   ├── RAILWAY_FIX.md                 # Schema migration fix guide
 │   ├── prisma/
 │   │   ├── schema.prisma              # 14 models, 6 enums
-│   │   ├── seed.ts
-│   │   └── migrations/                # Prisma Migrate baseline
-│   └── src/
-│       ├── index.ts                   # Dev server entry point
-│       ├── app.ts                     # Express app (shared middleware + routes)
-│       ├── server.ts                  # Production entry point
-│       ├── shared/                    # Cross-cutting infrastructure
-│       │   ├── database/prisma.ts     # Single PrismaClient singleton
-│       │   ├── errors/                # AppError, NotFoundError, etc.
-│       │   ├── middleware/             # auth, validation, error handler
-│       │   ├── types/common.types.ts  # TxClient type
-│       │   └── utils/
-│       │       ├── logger.ts          # Winston structured logger
-│       │       └── monetary.utils.ts  # MonetaryRules (round/truncate)
-│       ├── modules/                   # Domain modules (Modular Monolith)
-│       │   ├── payroll/
-│       │   │   ├── payroll.routes.ts
-│       │   │   ├── payroll.service.ts
-│       │   │   ├── payroll.schema.ts
-│       │   │   └── calculators/
-│       │   │       ├── payroll.calculator.ts
-│       │   │       ├── rate.calculator.ts
-│       │   │       └── recalculation.service.ts  # CENTRALIZED
-│       │   ├── incentives/
-│       │   │   ├── incentive.routes.ts
-│       │   │   ├── incentive.service.ts
-│       │   │   ├── incentive.schema.ts
-│       │   │   └── calculators/incentive.calculator.ts
-│       │   ├── incentive-sheets/
-│       │   │   ├── incentive-sheet.routes.ts
-│       │   │   ├── incentive-sheet.service.ts
-│       │   │   ├── incentive-sheet.config.ts
-│       │   │   └── calculators/distribution.calculator.ts
-│       │   ├── deductions/
-│       │   │   ├── deduction.routes.ts
-│       │   │   └── deduction.service.ts
-│       │   ├── cash-advances/
-│       │   │   ├── cashAdvance.routes.ts
-│       │   │   └── cashAdvance.service.ts
-│       │   ├── employees/
-│       │   │   ├── employee.routes.ts
-│       │   │   └── employee.service.ts
-│       │   ├── branches/
-│       │   │   ├── branch.routes.ts
-│       │   │   └── branch.service.ts
-│       │   └── dashboard/
-│       │       ├── dashboard.routes.ts
-│       │       └── dashboard.service.ts
-│       └── routes/
-│           └── auth.routes.ts         # Preserved (simple JWT logic)
+│   │   ├── seed.ts                    # Seed data script
+│   │   └── migrations/                # (empty — uses db push)
+│   ├── src/
+│   │   ├── index.ts                   # Dev server entry point
+│   │   ├── app.ts                     # Express app factory (shared middleware + routes)
+│   │   ├── server.ts                  # Production entry point
+│   │   ├── shared/                    # Cross-cutting infrastructure
+│   │   │   ├── database/prisma.ts     # Single PrismaClient singleton (20 conn pool)
+│   │   │   ├── errors/                # AppError, NotFoundError, ValidationError, etc.
+│   │   │   ├── middleware/            # auth, validation, error handler
+│   │   │   ├── types/common.types.ts  # TxClient type
+│   │   │   └── utils/
+│   │   │       ├── logger.ts          # Winston structured logger
+│   │   │       └── monetary.utils.ts  # MonetaryRules (round/truncate)
+│   │   ├── modules/                   # Domain modules (Modular Monolith)
+│   │   │   ├── payroll/
+│   │   │   │   ├── payroll.routes.ts          # 83 lines (thin)
+│   │   │   │   ├── payroll.service.ts         # Orchestrates CRUD
+│   │   │   │   ├── payroll.schema.ts          # Zod validation
+│   │   │   │   └── calculators/
+│   │   │   │       ├── payroll.calculator.ts  # Pure: calculatePayroll()
+│   │   │   │       ├── rate.calculator.ts     # Pure: monthly/annual formulas
+│   │   │   │       └── recalculation.service.ts # CENTRALIZED recalculate()
+│   │   │   ├── incentives/
+│   │   │   │   ├── incentive.routes.ts        # 50 lines (thin)
+│   │   │   │   ├── incentive.service.ts
+│   │   │   │   ├── incentive.schema.ts
+│   │   │   │   └── calculators/incentive.calculator.ts
+│   │   │   ├── incentive-sheets/
+│   │   │   │   ├── incentive-sheet.routes.ts  # 28 lines (thin)
+│   │   │   │   ├── incentive-sheet.service.ts
+│   │   │   │   ├── incentive-sheet.config.ts
+│   │   │   │   └── calculators/distribution.calculator.ts
+│   │   │   ├── deductions/
+│   │   │   │   ├── deduction.routes.ts        # 32 lines (thin)
+│   │   │   │   └── deduction.service.ts
+│   │   │   ├── cash-advances/
+│   │   │   │   ├── cashAdvance.routes.ts      # 30 lines (thin)
+│   │   │   │   └── cashAdvance.service.ts
+│   │   │   ├── employees/
+│   │   │   │   ├── employee.routes.ts         # 42 lines (thin)
+│   │   │   │   └── employee.service.ts
+│   │   │   ├── branches/
+│   │   │   │   ├── branch.routes.ts           # 24 lines (thin)
+│   │   │   │   └── branch.service.ts
+│   │   │   └── dashboard/
+│   │   │       ├── dashboard.routes.ts        # 15 lines (thin)
+│   │   │       └── dashboard.service.ts
+│   │   ├── routes/
+│   │   │   └── auth.routes.ts                # Preserved (simple JWT logic)
+│   │   ├── middleware/
+│   │   │   └── auth.middleware.ts            # Legacy — imported by auth.routes.ts
+│   │   └── utils/
+│   │       └── prisma.ts                     # Re-exports shared PrismaClient
+│   └── tests/
+│       ├── characterization/
+│       │   ├── payroll-calculator.test.ts    # 28 tests
+│       │   └── incentive-calculator.test.ts  # 22 tests
+│       ├── unit/
+│       │   ├── payroll-calculator.test.ts    # 10 tests
+│       │   ├── rate-calculator.test.ts       # 19 tests
+│       │   ├── incentive-calculator.test.ts  # 8 tests
+│       │   ├── payroll-schema.test.ts        # 10 tests
+│       │   └── late-deduction-regression.test.ts # 3 tests
+│       ├── integration/
+│       │   ├── payroll-service.test.ts       # 7 tests
+│       │   ├── employee-service.test.ts
+│       │   ├── incentive-service.test.ts
+│       │   └── deduction-service.test.ts
+│       └── smoke/
+│           └── api.test.ts                  # 13 tests (skip if no server)
 │
 ├── frontend/
-│   ├── .env.example
+│   ├── .env / .env.example
 │   ├── package.json
 │   ├── vite.config.ts
 │   ├── tailwind.config.js
+│   ├── postcss.config.js
 │   ├── index.html
 │   └── src/
-│       ├── App.tsx
-│       ├── main.tsx
-│       ├── context/AuthContext.tsx
-│       ├── types/index.ts
+│       ├── App.tsx                          # Root: QueryClient + AuthProvider + Router
+│       ├── main.tsx                         # React DOM entry
+│       ├── index.css                        # Global styles + Tailwind
+│       ├── context/AuthContext.tsx           # Auth state, login/logout, JWT
+│       ├── types/index.ts                   # All TS interfaces, enums, constants
 │       ├── utils/
-│       │   ├── api.ts
-│       │   └── helpers.ts
+│       │   ├── api.ts                       # Axios instance + all API wrappers
+│       │   └── helpers.ts                   # formatCurrency, formatDate, cn(), etc.
 │       ├── pages/
-│       │   ├── Login.tsx, Dashboard.tsx, Branches.tsx
-│       │   ├── Employees.tsx, Payroll.tsx
-│       │   ├── Payslip.tsx, Payslips.tsx
-│       │   ├── CashAdvances.tsx, IncentiveConfig.tsx
+│       │   ├── Login.tsx
+│       │   ├── Dashboard.tsx
+│       │   ├── Branches.tsx
+│       │   ├── Employees.tsx
+│       │   ├── Payroll.tsx                  # Largest page (~56 KB)
+│       │   ├── Payslip.tsx
+│       │   ├── Payslips.tsx
+│       │   ├── CashAdvances.tsx
+│       │   └── IncentiveConfig.tsx
 │       └── components/
 │           ├── layout/Layout.tsx, Header.tsx, Sidebar.tsx
 │           ├── FixedDeductionsModal.tsx
@@ -137,15 +172,10 @@ PHPS/
 │           ├── IncentiveExclusionsModal.tsx
 │           └── IncentiveSheetModal.tsx
 │
-├── report/                            # Project documentation
-│   ├── SYSTEM_CONTEXT.md
-│   ├── ARCHITECTURE_STYLE_REFACTORING.md
-│   └── CURRENT_PROGRESS.md
-└── tests/                             # Test suites
-    ├── characterization/
-    ├── unit/
-    ├── integration/
-    └── smoke/
+├── report/                                 # Project documentation
+│   ├── SYSTEM_CONTEXT.md                   # Full system audit (909 lines)
+│   ├── CURRENT_PROGRESS.md                 # Refactoring progress report
+│   └── ARCHITECTURE_STYLE_REFACTORING.md
 ```
 
 ---
@@ -160,6 +190,7 @@ PHPS/
 | `PayrollStatus` | `DRAFT`, `PENDING`, `APPROVED`, `PAID` |
 | `BranchType` | `VETERINARY_CLINIC`, `VETERINARY_HOSPITAL`, `TRADING` |
 | `PositionType` | `RESIDENT_VETERINARIAN`, `JUNIOR_VETERINARIAN`, `GROOMER`, `GROOMER_VET_ASSISTANT`, `VETERINARY_ASSISTANT`, `VETERINARY_NURSE`, `CLINIC_SECRETARY`, `STAFF` |
+| `RateCalculationMethod` | `MONTHLY`, `ANNUAL` |
 
 ### 4.2 Models
 
@@ -172,6 +203,7 @@ PHPS/
 
 #### `Employee`
 - `id`, `branchId` → Branch, `name`, `position` (PositionType)
+- `calculationMethod` (RateCalculationMethod — MONTHLY or ANNUAL)
 - `salary` (Decimal 12,2), `ratePerDay` (Decimal 12,6), `ratePerHour` (Decimal 12,6)
 - Government IDs: `sssNo?`, `tinNo?`, `philhealthNo?`, `pagibigNo?`
 - `address?`, `hiredOn?`, `isActive`
@@ -229,14 +261,14 @@ PHPS/
 
 ## 5. Payroll Calculation Formulas
 
-All logic lives in `backend/src/utils/payrollCalculations.ts`.
+All logic lives in `backend/src/modules/payroll/calculators/payroll.calculator.ts` (pure function).
 
 ### 5.1 Rate Calculation (Position-Based)
 
 | Position | Formula | Constants |
 |----------|---------|-----------|
-| **Resident Veterinarian** | Monthly: `Rate/Day = Salary ÷ D` | D = branch workingDaysPerMonth (default 22) |
-| **All Other Positions** | Annual: `Rate/Day = (Salary × 12) ÷ 313` | 313 = annual working days constant |
+| **Resident Veterinarian** (MONTHLY) | `Rate/Day = Salary ÷ D` | D = branch workingDaysPerMonth (default 22) |
+| **All Other Positions** (ANNUAL) | `Rate/Day = (Salary × 12) ÷ 313` | 313 = annual working days constant |
 | Both | `Rate/Hour = Rate/Day ÷ H` | H = branch workingHoursPerDay (default 8) |
 
 ### 5.2 Pay Calculations
@@ -253,7 +285,7 @@ Gross Pay = Basic Pay + Holiday Pay + OT Pay + Total Incentives
 Net Pay   = Gross Pay - Total Deductions - Late Deduction  (TRUNCATED to 2 decimals)
 ```
 
-> **Important**: Holiday Pay and Net Pay use `Math.floor(x * 100) / 100` (truncation), NOT rounding. All other values use standard `Math.round(x * 100) / 100`.
+> **Important**: Holiday Pay and Net Pay use `Math.floor(x * 100) / 100` (truncation), NOT rounding. All other values use standard `Math.round(x * 100) / 100`. All monetary operations go through `MonetaryRules` utility.
 
 ### 5.3 Days Present
 
@@ -272,7 +304,7 @@ Total Days Present = Working Days - Day Off - Absences
 | `COUNT_MULTIPLY` | `count × rate` | 5 CBC × ₱50 = ₱250 |
 | `PERCENT` | `inputValue × rate` | ₱34,550 Surgery × 10% = ₱3,455 |
 
-### 6.2 Incentive Configuration
+### 6.2 Incentive Configuration (Default Config)
 
 | Type | Rate | Formula | Eligible Positions | Shared? |
 |------|------|---------|-------------------|---------|
@@ -293,6 +325,13 @@ Total Days Present = Working Days - Day Off - Absences
 ### 6.3 Incentive Sheet (Branch-Level Daily Grid)
 
 The `IncentiveSheet` model allows branch-level daily input of shared incentive values (Grooming, Surgery, Emergency, Confinement). After data entry, the system can **distribute** these totals to individual employee payroll records based on eligibility.
+
+**Distribution Config** (in `incentive-sheet.config.ts`):
+- **GROOMING**: ₱75/unit ÷ eligible groomers
+- **SURGERY**: 100% of total ÷ eligible staff (Vet Asst, Vet Nurse, Clinic Secretary, Staff, Groomer/Vet Asst)
+- **EMERGENCY**: ₱120/unit ÷ eligible staff
+- **CONFINEMENT_VET**: ₱55/unit ÷ all vets (only Resident Vets receive)
+- **CONFINEMENT_STAFF**: ₱45/unit ÷ eligible staff
 
 ### 6.4 Incentive Exclusions
 
@@ -339,22 +378,24 @@ All endpoints except `/auth/login` and `/api/health` require JWT Bearer token.
 ### 8.2 Branches (`/api/branches`)
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/` | List all branches |
-| GET | `/:id` | Get branch by ID |
+| GET | `/` | List all active branches |
+| GET | `/:id` | Get branch by ID (with employees) |
 | POST | `/` | Create branch |
-| PUT | `/:id` | Update branch |
-| DELETE | `/:id` | Delete branch |
+| PUT | `/:id` | Update branch (auto-recalculates employee rates if D/H changed) |
+| DELETE | `/:id` | Soft delete branch |
 
 ### 8.3 Employees (`/api/employees`)
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/` | List employees (filter: `?branchId=`) |
+| GET | `/` | List active employees (filter: `?branchId=`) |
+| GET | `/formula/:position` | Get formula info for position |
 | GET | `/:id` | Get employee by ID |
 | POST | `/` | Create employee (auto-calculates rates) |
 | PUT | `/:id` | Update employee |
-| DELETE | `/:id` | Delete employee |
+| DELETE | `/:id` | Soft delete employee |
 | GET | `/:id/fixed-deductions` | Get fixed deductions |
-| PUT | `/:id/fixed-deductions` | Update fixed deductions |
+| PUT | `/:id/fixed-deductions` | Update fixed deductions (syncs to all payrolls) |
+| POST | `/:id/recalculate-rates` | Force rate recalculation |
 | GET | `/:id/incentive-exclusions` | Get incentive exclusions |
 | POST | `/:id/incentive-exclusions` | Toggle incentive exclusion |
 
@@ -373,8 +414,8 @@ All endpoints except `/auth/login` and `/api/health` require JWT Bearer token.
 |--------|------|-------------|
 | GET | `/config` | Get all incentive configs |
 | GET | `/config/position/:position` | Get configs for position |
-| PUT | `/config/:type` | Update incentive config |
-| POST | `/config/init` | Initialize default configs |
+| PUT | `/config/:type` | Update incentive config (admin only) |
+| POST | `/config/init` | Initialize default configs (admin only) |
 | GET | `/payroll/:payrollId` | Get incentives for payroll |
 | POST | `/` | Create incentive |
 | PUT | `/payroll/:payrollId/bulk` | Bulk update incentives |
@@ -387,7 +428,7 @@ All endpoints except `/auth/login` and `/api/health` require JWT Bearer token.
 |--------|------|-------------|
 | GET | `/` | Get sheet (`?branchId=&startDate=&endDate=`) |
 | PUT | `/:sheetId/inputs` | Save daily inputs |
-| POST | `/:sheetId/distribute` | Distribute to employee payrolls |
+| POST | `/:sheetId/distribute` | Distribute to employee payrolls (uses `$transaction`) |
 | GET | `/config` | Get sheet config |
 
 ### 8.7 Deductions (`/api/deductions`)
@@ -407,9 +448,9 @@ All endpoints except `/auth/login` and `/api/health` require JWT Bearer token.
 | GET | `/:id` | Get by ID |
 | POST | `/` | Create cash advance |
 | PUT | `/:id` | Update |
-| POST | `/:id/mark-paid` | Mark as paid |
+| POST | `/:id/mark-paid` | Mark as paid (uses full recalculation) |
 | DELETE | `/:id` | Delete |
-| GET | `/employee/:employeeId/unpaid` | Get unpaid advances |
+| GET | `/employee/:employeeId/unpaid` | Get unpaid advances with total |
 
 ### 8.9 Dashboard (`/api/dashboard`)
 | Method | Path | Description |
@@ -436,7 +477,7 @@ All endpoints except `/auth/login` and `/api/health` require JWT Bearer token.
 | `/cash-advances` | `CashAdvances` | Cash advance tracking |
 | `/payslips` | `Payslips` | Payslip listing |
 | `/payslips/:id` | `Payslip` | Individual payslip view/print |
-| `/incentive-config` | `IncentiveConfig` | Manage incentive rates |
+| `/incentive-config` | `IncentiveConfig` | Manage incentive rates (admin only) |
 
 ---
 
@@ -512,24 +553,24 @@ Creates:
 
 - **Backend**: Root dir `backend`, uses `nixpacks.toml` (Node 18)
   - Build: `npm ci → prisma generate → npm run build`
-  - Start: `prisma migrate deploy && npm start`
+  - Start: `prisma db push --accept-data-loss && npm start`
 - **Frontend**: Root dir `frontend`, builds with Vite, serves with `serve -s dist`
 - **Database**: Railway PostgreSQL (auto-provides `DATABASE_URL`)
-- Health check: `GET /api/health`
+- **Health check**: `GET /api/health`
 
 ---
 
 ## 16. Key Patterns & Conventions
 
 1. **Modular Monolith** — Routes → Services → Calculators → Prisma. Service layer extracts business logic from HTTP.
-2. **Centralized Recalculation** — `RecalculationService.recalculate(payrollId, tx?)` is the single source of truth for payroll total updates.
-3. **Thin Routes** — Route files delegate to services and handle only HTTP concerns (~30-80 lines each).
+2. **Centralized Recalculation** — `RecalculationService.recalculate(payrollId, tx?)` is the single source of truth for payroll total updates. Used by all modules (payroll, incentives, deductions, cash-advances, employees).
+3. **Thin Routes** — Route files delegate to services and handle only HTTP concerns (~15-83 lines each).
 4. **Pure Calculators** — All calculation functions are stateless, side-effect-free pure functions (no DB, no HTTP).
 5. **Transaction Propagation** — Services accept optional `tx?: Prisma.TransactionClient` for multi-step atomic operations.
 6. **MonetaryRules** — All financial rounding/truncation uses `MonetaryRules` utility (no bare `Math.round` in business code).
 7. **Zod Validation** — All new routes use Zod schemas via generic `validate()` middleware.
-8. **Domain Errors** — `NotFoundError`, `ValidationError`, etc. thrown in services, mapped to HTTP by global error handler.
-9. **Single PrismaClient** — One shared singleton with 20-connection pool.
+8. **Domain Errors** — `NotFoundError`, `ValidationError`, `ConflictError`, `UnauthorizedError` thrown in services, mapped to HTTP by global error handler.
+9. **Single PrismaClient** — One shared singleton with 20-connection pool (re-exported from `shared/database/prisma.ts`).
 10. **Prisma ORM** with PostgreSQL adapter (`@prisma/adapter-pg`)
 11. **Currency** — Philippine Peso (PHP), formatted with `Intl.NumberFormat('en-PH')`
 12. **TanStack Query** — 5-minute stale time, 1 retry
@@ -537,18 +578,27 @@ Creates:
 14. **Form validation**: React Hook Form + Zod resolvers
 15. **Date handling**: `date-fns` library
 16. **Print**: `react-to-print` for payslip generation
+17. **Winston Logger** — Structured logging with colorized console output in dev, JSON in production
 
 ---
 
 ## 17. Testing
 
-| Category | Count | Framework |
-|----------|-------|-----------|
-| Characterization (baseline) | 50 | vitest |
-| Unit (calculators, schemas) | 50 | vitest |
-| Integration (services) | 26 | vitest + test DB |
-| API Smoke (supertest) | 12 | vitest + supertest |
-| **Total** | **138** | |
+| Category | Tests | Framework | Status |
+|----------|-------|-----------|--------|
+| Characterization — Payroll Calculator | 28 | vitest | ✅ ALL PASS |
+| Characterization — Incentive Calculator | 22 | vitest | ✅ ALL PASS |
+| Unit — PayrollCalculator | 10 | vitest | ✅ ALL PASS |
+| Unit — RateCalculator | 19 | vitest | ✅ ALL PASS |
+| Unit — IncentiveCalculator | 8 | vitest | ✅ ALL PASS |
+| Unit — Payroll Schema Validation | 10 | vitest | ✅ ALL PASS |
+| Unit — Late Deduction Regression | 3 | vitest | ✅ ALL PASS |
+| Integration — PayrollService | 7 | vitest | ✅ ALL PASS |
+| Integration — EmployeeService | — | vitest | ✅ ALL PASS |
+| Integration — IncentiveService | — | vitest | ✅ ALL PASS |
+| Integration — DeductionService | — | vitest | ✅ ALL PASS |
+| Smoke — API Endpoints | 13 | vitest + supertest | ⚠️ SKIP (server needed) |
+| **TOTAL** | **120+** | | **0 failed** |
 
 ```bash
 npm test              # Run all tests
@@ -558,7 +608,30 @@ npm run test:coverage # Coverage report
 
 ---
 
-## 18. Known Issues
+## 18. Known Issues & Technical Debt
+
+### Bugs
+| # | Issue | Location | Severity |
+|---|-------|----------|----------|
+| 1 | `totalEmployees === activeEmployees` both return same count (both filtered by `isActive: true`) | `dashboard.service.ts` | Low |
+
+### Incomplete Implementations
+| # | Issue | Location | Severity |
+|---|-------|----------|----------|
+| 1 | Search input is decorative (no state/event handlers) | `Header.tsx` | Low |
+| 2 | Notification bell is decorative (no notification system) | `Header.tsx` | Low |
+| 3 | No database migrations (uses `prisma db push`) | — | High |
+| 4 | No CI/CD pipeline beyond Railway auto-deploy | — | Medium |
+| 5 | Branch Manager role not consistently enforced | Most routes | Low |
+
+### Technical Debt
+| # | Issue | Location | Severity |
+|---|-------|----------|----------|
+| 1 | Empty directories in frontend (`components/payroll/`, `components/payslip/`, `components/ui/`, `hooks/`) | Frontend | Low |
+| 2 | Frontend `calculateRatePerDay` in helpers uses hardcoded 26 days | `helpers.ts` | Low |
+| 3 | No TypeScript strict null checks in backend | `tsconfig.json` | Low |
+| 4 | Decimal conversion via `Number()` can lose precision | Multiple routes | Low |
+| 5 | `SYSTEM_INDEX.md` and `README.md` need updating for new module paths | Documentation | Low |
 
 ---
 
@@ -571,7 +644,7 @@ npm install
 npm run dev              # Start dev server (ts-node-dev, port 3001)
 npm run build            # TypeScript compile
 npm start                # Run compiled JS
-npm test                 # Run all 138 tests
+npm test                 # Run all 120+ tests
 npm run test:watch       # Watch mode
 npm run db:seed          # Seed database
 npx prisma db push       # Push schema to DB (dev)
@@ -587,27 +660,6 @@ npm run build            # Production build
 npm run preview          # Preview production build
 ```
 
-# Frontend
-cd pet-hub-payroll/frontend
-npm install
-npm run dev              # Start Vite dev server (port 5173)
-npm run build            # Production build
-npm run preview          # Preview production build
-```
-
 ---
 
-## 19. Excel Files Reference
-
-The `excel/` directory contains the original Excel payroll files that this system replaces:
-- PET HUB ANGELES PAYROLL
-- PET HUB BACOOR PAYROLL
-- PET HUB BALIWAG PAYROLL
-- PET HUB BATAAN PAYROLL
-- PET HUB LANCASTER PAYROLL
-- PET HUB LAS PINAS PAYROLL
-- PET HUB PARANAQUE PAYROLL
-- PET HUB TRADING PAYROLL
-- PET-HUB-OFFICE (Jan 26 - Feb 10, 2026)
-
-These files are the source of truth for the payroll calculation formulas and incentive structures implemented in the system.
+## 20. Architecture
