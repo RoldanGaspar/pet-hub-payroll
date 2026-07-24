@@ -13,6 +13,8 @@ import deductionRoutes from './modules/deductions/deduction.routes';
 import cashAdvanceRoutes from './modules/cash-advances/cashAdvance.routes';
 import dashboardRoutes from './modules/dashboard/dashboard.routes';
 import prisma from './utils/prisma';
+import { errorHandler } from './shared/middleware/error.middleware';
+import { logger } from './shared/utils/logger';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -113,18 +115,11 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// Global error handler
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Unhandled error:', err);
-  res.status(500).json({ 
-    error: process.env.NODE_ENV === 'production' 
-      ? 'Internal server error' 
-      : err.message 
-  });
-});
+// Global error handler (shared)
+app.use(errorHandler);
 
 const server = app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
+  logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
 });
 
 // Graceful shutdown

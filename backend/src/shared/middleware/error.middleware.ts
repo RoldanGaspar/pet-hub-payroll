@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { AppError } from '../errors/AppError';
 import { ZodError } from 'zod';
+import { logger } from '../utils/logger';
 
 export function errorHandler(err: Error, _req: Request, res: Response, _next: NextFunction) {
   if (err instanceof AppError) {
@@ -19,7 +20,7 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
     });
   }
 
-  console.error('Unhandled error:', err);
+  logger.error('Unhandled error', { message: err.message, stack: err.stack });
   return res.status(500).json({
     error: 'INTERNAL_ERROR',
     message: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
