@@ -3,8 +3,9 @@ import prisma from '../../shared/database/prisma';
 export class DashboardService {
   async getStats(branchId?: number) {
     const branchFilter = branchId ? { branchId } : {};
-    const [totalBranches, totalEmployees, pendingPayrolls, recentPayrolls, branchStats] = await Promise.all([
+    const [totalBranches, totalEmployees, activeEmployees, pendingPayrolls, recentPayrolls, branchStats] = await Promise.all([
       prisma.branch.count({ where: { isActive: true } }),
+      prisma.employee.count({ where: { ...(branchId ? { branchId } : {}) } }),
       prisma.employee.count({ where: { isActive: true, ...(branchId ? { branchId } : {}) } }),
       prisma.payrollPeriod.count({ where: { status: { in: ['DRAFT', 'PENDING'] }, employee: branchFilter } }),
       prisma.payrollPeriod.findMany({ where: { employee: branchFilter }, include: { employee: { include: { branch: true } } }, orderBy: { createdAt: 'desc' }, take: 10 }),
@@ -17,7 +18,7 @@ export class DashboardService {
     const totalDisbursement = monthlyPayrolls.reduce((sum, p) => sum + Number(p.netPay), 0);
 
     return {
-      totalBranches, totalEmployees, activeEmployees: totalEmployees, pendingPayrolls, totalDisbursement,
+      totalBranches, totalEmployees, activeEmployees, pendingPayrolls, totalDisbursement,
       recentPayrolls: recentPayrolls.map((p) => ({ id: p.id, employeeName: p.employee.name, branchName: p.employee.branch.name, startDate: p.startDate, endDate: p.endDate, netPay: p.netPay, status: p.status })),
       branchSummaries: branchStats.map((b) => ({ id: b.id, name: b.name, type: b.type, employeeCount: b._count.employees, latestDisbursement: b.employees.flatMap((e) => e.payrollPeriods).reduce((sum, p) => sum + Number(p.netPay), 0) })),
     };

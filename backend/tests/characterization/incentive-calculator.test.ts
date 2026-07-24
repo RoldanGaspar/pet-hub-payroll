@@ -1,21 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import {
-  calculateIncentive,
-  calculateBulkIncentives,
-  getIncentiveTypesForPosition,
-  isSharedIncentiveType,
-  getDivisionPositionsForType,
-  getReceivingPositionsForType,
+  IncentiveCalculator,
   DEFAULT_INCENTIVE_CONFIG,
   IncentiveType,
   FormulaType,
-} from '../../src/utils/payrollCalculations';
+} from '../../src/modules/incentives/calculators/incentive.calculator';
 import { PositionType } from '@prisma/client';
 
 describe('Incentive Calculator — CHARACTERIZATION (lock-in current behavior)', () => {
   describe('calculateIncentive — COUNT_MULTIPLY formula', () => {
     it('calculates count × rate for non-shared types', () => {
-      const result = calculateIncentive({
+      const result = IncentiveCalculator.calculate({
         type: 'CBC',
         count: 5,
         inputValue: 0,
@@ -27,7 +22,7 @@ describe('Incentive Calculator — CHARACTERIZATION (lock-in current behavior)',
     });
 
     it('divides among eligible employees for shared types', () => {
-      const result = calculateIncentive({
+      const result = IncentiveCalculator.calculate({
         type: 'GROOMING',
         count: 100,
         inputValue: 0,
@@ -41,7 +36,7 @@ describe('Incentive Calculator — CHARACTERIZATION (lock-in current behavior)',
     });
 
     it('does not divide when numEligible is 1 or less', () => {
-      const result = calculateIncentive({
+      const result = IncentiveCalculator.calculate({
         type: 'GROOMING',
         count: 100,
         inputValue: 0,
@@ -53,7 +48,7 @@ describe('Incentive Calculator — CHARACTERIZATION (lock-in current behavior)',
     });
 
     it('rounds amount to 2 decimal places', () => {
-      const result = calculateIncentive({
+      const result = IncentiveCalculator.calculate({
         type: 'CBC',
         count: 3,
         inputValue: 0,
@@ -67,7 +62,7 @@ describe('Incentive Calculator — CHARACTERIZATION (lock-in current behavior)',
 
   describe('calculateIncentive — PERCENT formula', () => {
     it('calculates inputValue × rate for percentage types', () => {
-      const result = calculateIncentive({
+      const result = IncentiveCalculator.calculate({
         type: 'SURGERY',
         count: 0,
         inputValue: 34550,
@@ -80,7 +75,7 @@ describe('Incentive Calculator — CHARACTERIZATION (lock-in current behavior)',
     });
 
     it('handles 40% emergency rate', () => {
-      const result = calculateIncentive({
+      const result = IncentiveCalculator.calculate({
         type: 'EMERGENCY',
         count: 0,
         inputValue: 10000,
@@ -94,29 +89,29 @@ describe('Incentive Calculator — CHARACTERIZATION (lock-in current behavior)',
 
   describe('isSharedIncentiveType', () => {
     it('returns true for CONFINEMENT_VET', () => {
-      expect(isSharedIncentiveType('CONFINEMENT_VET')).toBe(true);
+      expect(IncentiveCalculator.isShared('CONFINEMENT_VET')).toBe(true);
     });
 
     it('returns true for CONFINEMENT_ASST', () => {
-      expect(isSharedIncentiveType('CONFINEMENT_ASST')).toBe(true);
+      expect(IncentiveCalculator.isShared('CONFINEMENT_ASST')).toBe(true);
     });
 
     it('returns true for GROOMING', () => {
-      expect(isSharedIncentiveType('GROOMING')).toBe(true);
+      expect(IncentiveCalculator.isShared('GROOMING')).toBe(true);
     });
 
     it('returns true for NURSING', () => {
-      expect(isSharedIncentiveType('NURSING')).toBe(true);
+      expect(IncentiveCalculator.isShared('NURSING')).toBe(true);
     });
 
     it('returns false for non-shared types', () => {
-      expect(isSharedIncentiveType('CBC')).toBe(false);
-      expect(isSharedIncentiveType('BLOOD_CHEM')).toBe(false);
-      expect(isSharedIncentiveType('ULTRASOUND')).toBe(false);
-      expect(isSharedIncentiveType('TEST_KITS')).toBe(false);
-      expect(isSharedIncentiveType('XRAY')).toBe(false);
-      expect(isSharedIncentiveType('SURGERY')).toBe(false);
-      expect(isSharedIncentiveType('EMERGENCY')).toBe(false);
+      expect(IncentiveCalculator.isShared('CBC')).toBe(false);
+      expect(IncentiveCalculator.isShared('BLOOD_CHEM')).toBe(false);
+      expect(IncentiveCalculator.isShared('ULTRASOUND')).toBe(false);
+      expect(IncentiveCalculator.isShared('TEST_KITS')).toBe(false);
+      expect(IncentiveCalculator.isShared('XRAY')).toBe(false);
+      expect(IncentiveCalculator.isShared('SURGERY')).toBe(false);
+      expect(IncentiveCalculator.isShared('EMERGENCY')).toBe(false);
     });
   });
 });
@@ -196,18 +191,18 @@ describe('Incentive Config — CHARACTERIZATION (lock-in current behavior)', () 
     it('returns 8 types for RESIDENT_VETERINARIAN (vets do not get all 11)', () => {
       // Vets get: CBC, BLOOD_CHEM, ULTRASOUND, TEST_KITS, XRAY, SURGERY, EMERGENCY, CONFINEMENT_VET
       // Vets do NOT get: CONFINEMENT_ASST, GROOMING, NURSING
-      const types = getIncentiveTypesForPosition(PositionType.RESIDENT_VETERINARIAN);
+      const types = IncentiveCalculator.getTypesForPosition(PositionType.RESIDENT_VETERINARIAN);
       expect(types).toHaveLength(8);
     });
 
     it('returns 7 types for JUNIOR_VETERINARIAN (no CONFINEMENT_VET)', () => {
       // Junior vets get all the same as Resident except CONFINEMENT_VET is shared and only Resident Vets receive it
-      const types = getIncentiveTypesForPosition(PositionType.JUNIOR_VETERINARIAN);
+      const types = IncentiveCalculator.getTypesForPosition(PositionType.JUNIOR_VETERINARIAN);
       expect(types).toHaveLength(7);
     });
 
     it('returns subset for GROOMER (5 types)', () => {
-      const types = getIncentiveTypesForPosition(PositionType.GROOMER);
+      const types = IncentiveCalculator.getTypesForPosition(PositionType.GROOMER);
       const typeNames = types.map((t) => t.type);
       expect(typeNames).toContain('SURGERY');
       expect(typeNames).toContain('EMERGENCY');
@@ -217,7 +212,7 @@ describe('Incentive Config — CHARACTERIZATION (lock-in current behavior)', () 
     });
 
     it('returns sorted by sortOrder', () => {
-      const types = getIncentiveTypesForPosition(PositionType.RESIDENT_VETERINARIAN);
+      const types = IncentiveCalculator.getTypesForPosition(PositionType.RESIDENT_VETERINARIAN);
       for (let i = 1; i < types.length; i++) {
         expect(types[i].sortOrder).toBeGreaterThanOrEqual(types[i - 1].sortOrder);
       }
@@ -233,7 +228,7 @@ describe('Bulk Incentive Calculation — CHARACTERIZATION', () => {
       { type: 'SURGERY', count: 0, inputValue: 50000 },
     ];
 
-    const result = calculateBulkIncentives(
+    const result = IncentiveCalculator.calculateBulk(
       PositionType.RESIDENT_VETERINARIAN,
       inputs
     );

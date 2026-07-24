@@ -1,6 +1,7 @@
 import prisma from '../../shared/database/prisma';
 import { NotFoundError } from '../../shared/errors';
 import { RateCalculator } from '../payroll/calculators/rate.calculator';
+import { RecalculationService } from '../payroll/calculators/recalculation.service';
 import { PositionType, RateCalculationMethod } from '@prisma/client';
 
 export class EmployeeService {
@@ -93,7 +94,6 @@ export class EmployeeService {
     }
     const payrollPeriods = await prisma.payrollPeriod.findMany({ where: { employeeId: id }, select: { id: true, deductionDivisor: true } });
     const updated = deductions && deductions.length > 0 ? deductions.filter((d: any) => d.amount > 0) : [];
-    const RecalculationService = (await import('../payroll/calculators/recalculation.service')).RecalculationService;
     const recalc = new RecalculationService();
     for (const payroll of payrollPeriods) {
       if (removedTypes.length > 0) await prisma.deduction.deleteMany({ where: { payrollId: payroll.id, type: { in: removedTypes } } });
