@@ -40,14 +40,6 @@ export function formatDateRange(startDate: string, endDate: string): string {
   return `${format(start, 'MMM dd')} - ${format(end, 'MMM dd, yyyy')}`;
 }
 
-export function calculateRatePerDay(salary: number): number {
-  return Math.round((salary / 26) * 1000000) / 1000000;
-}
-
-export function calculateRatePerHour(ratePerDay: number): number {
-  return Math.round((ratePerDay / 8) * 1000000) / 1000000;
-}
-
 export function getStatusColor(status: string): string {
   switch (status) {
     case 'DRAFT':
