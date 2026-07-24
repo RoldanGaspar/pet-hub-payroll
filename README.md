@@ -160,30 +160,39 @@ Net Pay = Gross Pay - Deductions
 | X-Ray | | |
 | Confinement | | |
 
-## Project Structure
+## Project Structure (Modular Monolith)
 
 ```
-pet-hub-payroll/
+PHPS/
 ├── backend/
 │   ├── src/
-│   │   ├── routes/          # API routes
-│   │   ├── middleware/      # Auth middleware
-│   │   └── utils/           # Helpers & Prisma client
+│   │   ├── app.ts             # Express app setup
+│   │   ├── server.ts          # Production entry
+│   │   ├── shared/            # Errors, middleware, utilities
+│   │   ├── modules/           # Domain modules
+│   │   │   ├── payroll/       # Service + Calculator + Routes
+│   │   │   ├── incentives/    # IncentiveCalculator + Service
+│   │   │   ├── deductions/    # DeductionService
+│   │   │   ├── employees/     # EmployeeService
+│   │   │   ├── branches/      # BranchService
+│   │   │   ├── cash-advances/ # CashAdvanceService
+│   │   │   ├── incentive-sheets/ # Distribution calculator
+│   │   │   └── dashboard/     # DashboardService
+│   │   └── routes/auth.routes.ts
 │   ├── prisma/
-│   │   ├── schema.prisma    # Database schema
-│   │   └── seed.ts          # Seed data
-│   └── package.json
+│   │   ├── schema.prisma
+│   │   ├── seed.ts
+│   │   └── migrations/
+│   └── tests/                 # 138 automated tests
 ├── frontend/
-│   ├── src/
-│   │   ├── components/      # React components
-│   │   ├── pages/           # Page components
-│   │   ├── context/         # Auth context
-│   │   ├── types/           # TypeScript types
-│   │   └── utils/           # API client & helpers
-│   └── package.json
-└── README.md
+│   └── src/                   # React SPA (unchanged)
+└── report/                    # Project documentation
 ```
 
-## License
+## Testing
 
-Private - Pet Hub Philippines Corporation
+```bash
+cd backend
+npm test            # 138 tests: characterization, unit, integration, API smoke
+npm run test:watch  # Watch mode
+```

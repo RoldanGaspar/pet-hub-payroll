@@ -43,83 +43,109 @@
 
 ## 3. Project Structure
 
+**Architecture**: Modular Monolith (Services + Calculators + Thin Routes)
+
 ```
-c:\dev\new\
-├── .env.example                    # Root env template
-├── excel/                          # Original Excel payroll files (8 branches)
-├── package.json                    # Root (helmet, express-rate-limit)
-└── pet-hub-payroll/                # Main application
-    ├── README.md
-    ├── RAILWAY_DEPLOYMENT.md
-    ├── backend/
-    │   ├── .env / .env.example
-    │   ├── package.json
-    │   ├── tsconfig.json           # Target ES2020, CommonJS
-    │   ├── prisma.config.ts
-    │   ├── nixpacks.toml           # Railway deployment config
-    │   ├── railway-build.sh
-    │   ├── prisma/
-    │   │   ├── schema.prisma       # 14 models, 4 enums
-    │   │   └── seed.ts             # Admin users, 8 branches, sample employees
-    │   └── src/
-    │       ├── index.ts            # Express server entry point
-    │       ├── middleware/
-    │       │   └── auth.middleware.ts   # JWT verify, role-based access
-    │       ├── routes/
-    │       │   ├── auth.routes.ts
-    │       │   ├── branch.routes.ts
-    │       │   ├── employee.routes.ts
-    │       │   ├── payroll.routes.ts
-    │       │   ├── incentive.routes.ts
-    │       │   ├── incentive-sheet.routes.ts
-    │       │   ├── deduction.routes.ts
-    │       │   ├── cashAdvance.routes.ts
-    │       │   └── dashboard.routes.ts
-    │       ├── controllers/            # Empty (logic is in routes)
-    │       ├── services/               # Empty (logic is in routes)
-    │       └── utils/
-    │           ├── prisma.ts           # PrismaClient with pg Pool adapter
-    │           └── payrollCalculations.ts  # All calculation formulas
-    └── frontend/
-        ├── .env.example
-        ├── package.json
-        ├── vite.config.ts          # Dev proxy /api → localhost:3001
-        ├── tailwind.config.js      # Custom primary/accent palette, Inter font
-        ├── index.html
-        └── src/
-            ├── App.tsx             # Routes definition
-            ├── main.tsx
-            ├── index.css
-            ├── context/
-            │   └── AuthContext.tsx  # Auth state, login/logout, token in localStorage
-            ├── types/
-            │   └── index.ts        # All TypeScript interfaces & constants
-            ├── utils/
-            │   ├── api.ts          # Axios instance + all API wrapper functions
-            │   └── helpers.ts      # cn(), formatCurrency(), formatDate(), etc.
-            ├── pages/
-            │   ├── Login.tsx
-            │   ├── Dashboard.tsx
-            │   ├── Branches.tsx
-            │   ├── Employees.tsx
-            │   ├── Payroll.tsx         # Main payroll page (largest: 56KB)
-            │   ├── Payslip.tsx
-            │   ├── Payslips.tsx
-            │   ├── CashAdvances.tsx
-            │   └── IncentiveConfig.tsx
-            ├── components/
-            │   ├── FixedDeductionsModal.tsx
-            │   ├── IncentiveCalculatorModal.tsx
-            │   ├── IncentiveExclusionsModal.tsx
-            │   ├── IncentiveSheetModal.tsx
-            │   ├── layout/
-            │   │   ├── Layout.tsx
-            │   │   ├── Header.tsx
-            │   │   └── Sidebar.tsx
-            │   ├── payroll/        # Empty
-            │   ├── payslip/        # Empty
-            │   └── ui/             # Empty
-            └── hooks/              # Empty
+PHPS/
+├── README.md
+├── SYSTEM_INDEX.md
+├── RAILWAY_DEPLOYMENT.md
+├── .github/workflows/backend-ci.yml   # CI/CD pipeline
+├── backend/
+│   ├── .env / .env.example
+│   ├── package.json
+│   ├── tsconfig.json
+│   ├── prisma.config.ts
+│   ├── nixpacks.toml
+│   ├── vitest.config.ts               # Test runner config
+│   ├── prisma/
+│   │   ├── schema.prisma              # 14 models, 6 enums
+│   │   ├── seed.ts
+│   │   └── migrations/                # Prisma Migrate baseline
+│   └── src/
+│       ├── index.ts                   # Dev server entry point
+│       ├── app.ts                     # Express app (shared middleware + routes)
+│       ├── server.ts                  # Production entry point
+│       ├── shared/                    # Cross-cutting infrastructure
+│       │   ├── database/prisma.ts     # Single PrismaClient singleton
+│       │   ├── errors/                # AppError, NotFoundError, etc.
+│       │   ├── middleware/             # auth, validation, error handler
+│       │   ├── types/common.types.ts  # TxClient type
+│       │   └── utils/
+│       │       ├── logger.ts          # Winston structured logger
+│       │       └── monetary.utils.ts  # MonetaryRules (round/truncate)
+│       ├── modules/                   # Domain modules (Modular Monolith)
+│       │   ├── payroll/
+│       │   │   ├── payroll.routes.ts
+│       │   │   ├── payroll.service.ts
+│       │   │   ├── payroll.schema.ts
+│       │   │   └── calculators/
+│       │   │       ├── payroll.calculator.ts
+│       │   │       ├── rate.calculator.ts
+│       │   │       └── recalculation.service.ts  # CENTRALIZED
+│       │   ├── incentives/
+│       │   │   ├── incentive.routes.ts
+│       │   │   ├── incentive.service.ts
+│       │   │   ├── incentive.schema.ts
+│       │   │   └── calculators/incentive.calculator.ts
+│       │   ├── incentive-sheets/
+│       │   │   ├── incentive-sheet.routes.ts
+│       │   │   ├── incentive-sheet.service.ts
+│       │   │   ├── incentive-sheet.config.ts
+│       │   │   └── calculators/distribution.calculator.ts
+│       │   ├── deductions/
+│       │   │   ├── deduction.routes.ts
+│       │   │   └── deduction.service.ts
+│       │   ├── cash-advances/
+│       │   │   ├── cashAdvance.routes.ts
+│       │   │   └── cashAdvance.service.ts
+│       │   ├── employees/
+│       │   │   ├── employee.routes.ts
+│       │   │   └── employee.service.ts
+│       │   ├── branches/
+│       │   │   ├── branch.routes.ts
+│       │   │   └── branch.service.ts
+│       │   └── dashboard/
+│       │       ├── dashboard.routes.ts
+│       │       └── dashboard.service.ts
+│       └── routes/
+│           └── auth.routes.ts         # Preserved (simple JWT logic)
+│
+├── frontend/
+│   ├── .env.example
+│   ├── package.json
+│   ├── vite.config.ts
+│   ├── tailwind.config.js
+│   ├── index.html
+│   └── src/
+│       ├── App.tsx
+│       ├── main.tsx
+│       ├── context/AuthContext.tsx
+│       ├── types/index.ts
+│       ├── utils/
+│       │   ├── api.ts
+│       │   └── helpers.ts
+│       ├── pages/
+│       │   ├── Login.tsx, Dashboard.tsx, Branches.tsx
+│       │   ├── Employees.tsx, Payroll.tsx
+│       │   ├── Payslip.tsx, Payslips.tsx
+│       │   ├── CashAdvances.tsx, IncentiveConfig.tsx
+│       └── components/
+│           ├── layout/Layout.tsx, Header.tsx, Sidebar.tsx
+│           ├── FixedDeductionsModal.tsx
+│           ├── IncentiveCalculatorModal.tsx
+│           ├── IncentiveExclusionsModal.tsx
+│           └── IncentiveSheetModal.tsx
+│
+├── report/                            # Project documentation
+│   ├── SYSTEM_CONTEXT.md
+│   ├── ARCHITECTURE_STYLE_REFACTORING.md
+│   └── CURRENT_PROGRESS.md
+└── tests/                             # Test suites
+    ├── characterization/
+    ├── unit/
+    ├── integration/
+    └── smoke/
 ```
 
 ---
@@ -495,37 +521,71 @@ Creates:
 
 ## 16. Key Patterns & Conventions
 
-1. **No controllers/services layer** — all business logic is directly in route handlers
-2. **Prisma ORM** with PostgreSQL adapter (not default Prisma engine)
-3. **Decimal handling** — Prisma `Decimal` types; converted to `Number()` in calculations
-4. **Currency** — Philippine Peso (PHP), formatted with `Intl.NumberFormat('en-PH')`
-5. **TanStack Query** — 5-minute stale time, 1 retry
-6. **Tailwind** v4 with custom color palette (primary = sky blue, accent = amber)
-7. **Fonts**: Inter (sans), Lexend (display)
-8. **Form validation**: React Hook Form + Zod resolvers
-9. **Date handling**: `date-fns` library
-10. **Print**: `react-to-print` for payslip generation
+1. **Modular Monolith** — Routes → Services → Calculators → Prisma. Service layer extracts business logic from HTTP.
+2. **Centralized Recalculation** — `RecalculationService.recalculate(payrollId, tx?)` is the single source of truth for payroll total updates.
+3. **Thin Routes** — Route files delegate to services and handle only HTTP concerns (~30-80 lines each).
+4. **Pure Calculators** — All calculation functions are stateless, side-effect-free pure functions (no DB, no HTTP).
+5. **Transaction Propagation** — Services accept optional `tx?: Prisma.TransactionClient` for multi-step atomic operations.
+6. **MonetaryRules** — All financial rounding/truncation uses `MonetaryRules` utility (no bare `Math.round` in business code).
+7. **Zod Validation** — All new routes use Zod schemas via generic `validate()` middleware.
+8. **Domain Errors** — `NotFoundError`, `ValidationError`, etc. thrown in services, mapped to HTTP by global error handler.
+9. **Single PrismaClient** — One shared singleton with 20-connection pool.
+10. **Prisma ORM** with PostgreSQL adapter (`@prisma/adapter-pg`)
+11. **Currency** — Philippine Peso (PHP), formatted with `Intl.NumberFormat('en-PH')`
+12. **TanStack Query** — 5-minute stale time, 1 retry
+13. **Tailwind** v4 with custom color palette (primary = sky blue, accent = amber)
+14. **Form validation**: React Hook Form + Zod resolvers
+15. **Date handling**: `date-fns` library
+16. **Print**: `react-to-print` for payslip generation
 
 ---
 
-## 17. Known Issues / Debug Artifacts
+## 17. Testing
 
-- **Debug Telemetry Leftovers**: Cleaned up! The debug logging fetch calls wrapped in `// #region agent log` comments in `payroll.routes.ts` have been successfully removed for clean production-ready code.
+| Category | Count | Framework |
+|----------|-------|-----------|
+| Characterization (baseline) | 50 | vitest |
+| Unit (calculators, schemas) | 50 | vitest |
+| Integration (services) | 26 | vitest + test DB |
+| API Smoke (supertest) | 12 | vitest + supertest |
+| **Total** | **138** | |
+
+```bash
+npm test              # Run all tests
+npm run test:watch    # Watch mode
+npm run test:coverage # Coverage report
+```
 
 ---
 
-## 18. Common Development Commands
+## 18. Known Issues
+
+---
+
+## 19. Common Development Commands
 
 ```bash
 # Backend
-cd pet-hub-payroll/backend
+cd backend
 npm install
 npm run dev              # Start dev server (ts-node-dev, port 3001)
 npm run build            # TypeScript compile
 npm start                # Run compiled JS
+npm test                 # Run all 138 tests
+npm run test:watch       # Watch mode
 npm run db:seed          # Seed database
-npx prisma db push       # Push schema to DB
+npx prisma db push       # Push schema to DB (dev)
 npx prisma generate      # Generate Prisma client
+npx prisma migrate dev   # Create migration from schema changes
+npx prisma migrate status # Check migration status
+
+# Frontend
+cd frontend
+npm install
+npm run dev              # Start Vite dev server (port 5173)
+npm run build            # Production build
+npm run preview          # Preview production build
+```
 
 # Frontend
 cd pet-hub-payroll/frontend
