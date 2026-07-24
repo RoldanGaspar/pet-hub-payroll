@@ -1,5 +1,5 @@
 import prisma from '../../shared/database/prisma';
-import { NotFoundError } from '../../shared/errors';
+import { ConflictError, NotFoundError } from '../../shared/errors';
 import { RecalculationService } from '../payroll/calculators/recalculation.service';
 import { SHARED_TYPES } from './incentive-sheet.config';
 import { calculateDistributions, calculatePreview, buildGrid, getDaysInRange } from './calculators/distribution.calculator';
@@ -7,6 +7,18 @@ import { MonetaryRules } from '../../shared/utils/monetary.utils';
 
 export class IncentiveSheetService {
   private recalculationService = new RecalculationService();
+
+  private async assertPeriodEditable(branchId: number, startDate: Date, endDate: Date) {
+    const finalizedPayroll = await prisma.payrollPeriod.findFirst({
+      where: {
+        employee: { branchId }, startDate, endDate, status: { in: ['APPROVED', 'PAID'] },
+      },
+      select: { id: true },
+    });
+    if (finalizedPayroll) {
+      throw new ConflictError('This incentive sheet belongs to a finalized payroll period. Re-open its payroll records before editing or distributing incentives.');
+    }
+  }
 
   async getOrCreate(branchId: number, startDate: string, endDate: string) {
     const start = new Date(startDate);
@@ -46,6 +58,7 @@ export class IncentiveSheetService {
   async saveInputs(sheetId: number, inputs: { date: string; type: string; value: number }[]) {
     const sheet = await prisma.incentiveSheet.findUnique({ where: { id: sheetId } });
     if (!sheet) throw new NotFoundError('IncentiveSheet', sheetId);
+    await this.assertPeriodEditable(sheet.branchId, sheet.startDate, sheet.endDate);
 
     for (const input of inputs) {
       const date = new Date(input.date);
@@ -86,6 +99,7 @@ export class IncentiveSheetService {
   async distribute(sheetId: number) {
     const sheet = await prisma.incentiveSheet.findUnique({ where: { id: sheetId }, include: { dailyInputs: true } });
     if (!sheet) throw new NotFoundError('IncentiveSheet', sheetId);
+    await this.assertPeriodEditable(sheet.branchId, sheet.startDate, sheet.endDate);
 
     const totals: Record<string, number> = {};
     for (const type of SHARED_TYPES) {

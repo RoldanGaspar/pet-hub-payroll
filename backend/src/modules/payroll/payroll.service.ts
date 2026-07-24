@@ -1,9 +1,10 @@
 import prisma from '../../shared/database/prisma';
 import { TxClient } from '../../shared/types/common.types';
-import { NotFoundError } from '../../shared/errors';
+import { ConflictError, NotFoundError } from '../../shared/errors';
 import { PayrollCalculator } from './calculators/payroll.calculator';
 import { RecalculationService } from './calculators/recalculation.service';
 import { MonetaryRules } from '../../shared/utils/monetary.utils';
+import { assertPayrollEditable, isPayrollLocked } from './payroll-lock';
 
 interface CreatePeriodInput {
   branchId: number;
@@ -23,7 +24,6 @@ interface UpdatePayrollInput {
   mealAllowance?: number;
   silPay?: number;
   birthdayLeave?: number;
-  status?: 'DRAFT' | 'PENDING' | 'APPROVED' | 'PAID';
 }
 
 interface PayrollFilters {
@@ -177,6 +177,7 @@ export class PayrollService {
     });
 
     if (!existing) throw new NotFoundError('PayrollPeriod', id);
+    assertPayrollEditable(existing);
 
     const totalIncentives = existing.incentives.reduce((sum, i) => sum + MonetaryRules.fromDecimal(i.amount), 0);
     const totalDeductions = existing.deductions.reduce((sum, d) => sum + MonetaryRules.fromDecimal(d.amount), 0);
@@ -223,7 +224,7 @@ export class PayrollService {
         grossPay: calculation.grossPay,
         totalDeductions,
         netPay: calculation.netPay,
-        status: data.status ?? existing.status,
+        status: existing.status,
       },
       include: {
         employee: { include: { branch: true } },
@@ -234,13 +235,65 @@ export class PayrollService {
   }
 
   async calculate(id: number, tx?: TxClient) {
+    const db = tx || prisma;
+    const payroll = await db.payrollPeriod.findUnique({ where: { id }, select: { id: true, status: true } });
+    assertPayrollEditable(payroll);
     await this.recalculationService.recalculate(id, tx);
     return this.getById(id);
   }
 
   async deletePayroll(id: number, tx?: TxClient) {
     const db = tx || prisma;
+    const payroll = await db.payrollPeriod.findUnique({ where: { id }, select: { id: true, status: true } });
+    assertPayrollEditable(payroll);
     await db.payrollPeriod.delete({ where: { id } });
     return { message: 'Payroll deleted successfully' };
+  }
+
+  async calculateBatch(ids: number[]) {
+    const payrolls = await prisma.payrollPeriod.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, status: true },
+    });
+    const foundIds = new Set(payrolls.map((payroll) => payroll.id));
+    const skippedIds = ids.filter((id) => !foundIds.has(id) || isPayrollLocked(payrolls.find((payroll) => payroll.id === id)?.status || ''));
+    const updatedIds = payrolls.filter((payroll) => !isPayrollLocked(payroll.status)).map((payroll) => payroll.id);
+
+    for (const id of updatedIds) await this.calculate(id);
+    return { updatedIds, skippedIds };
+  }
+
+  async approveBatch(ids: number[]) {
+    const payrolls = await prisma.payrollPeriod.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, status: true },
+    });
+    const approvableIds = payrolls
+      .filter((payroll) => payroll.status === 'DRAFT' || payroll.status === 'PENDING')
+      .map((payroll) => payroll.id);
+    const skippedIds = ids.filter((id) => !approvableIds.includes(id));
+
+    if (approvableIds.length) {
+      await prisma.payrollPeriod.updateMany({
+        where: { id: { in: approvableIds } },
+        data: { status: 'APPROVED' },
+      });
+    }
+    return { updatedIds: approvableIds, skippedIds };
+  }
+
+  async reopenPayroll(id: number) {
+    const payroll = await prisma.payrollPeriod.findUnique({
+      where: { id },
+      select: { id: true, status: true },
+    });
+    if (!payroll) throw new NotFoundError('PayrollPeriod', id);
+    if (!isPayrollLocked(payroll.status)) {
+      throw new ConflictError('Only approved or paid payrolls can be re-opened.');
+    }
+    return prisma.payrollPeriod.update({
+      where: { id },
+      data: { status: 'PENDING' },
+    });
   }
 }

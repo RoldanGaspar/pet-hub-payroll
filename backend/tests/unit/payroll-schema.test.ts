@@ -59,11 +59,6 @@ describe('Payroll Schemas — VALIDATION TESTS (Phase 1A)', () => {
       }
     });
 
-    it('rejects invalid status', () => {
-      const result = updatePayrollSchema.safeParse({ status: 'INVALID' });
-      expect(result.success).toBe(false);
-    });
-
     it('rejects negative holidays', () => {
       const result = updatePayrollSchema.safeParse({ holidays: -1 });
       expect(result.success).toBe(false);

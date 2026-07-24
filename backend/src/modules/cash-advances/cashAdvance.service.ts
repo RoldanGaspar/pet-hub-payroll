@@ -3,6 +3,7 @@ import { TxClient } from '../../shared/types/common.types';
 import { NotFoundError } from '../../shared/errors';
 import { RecalculationService } from '../payroll/calculators/recalculation.service';
 import { MonetaryRules } from '../../shared/utils/monetary.utils';
+import { assertPayrollEditable } from '../payroll/payroll-lock';
 
 export class CashAdvanceService {
   private recalculationService = new RecalculationService();
@@ -30,6 +31,10 @@ export class CashAdvanceService {
 
   async markPaid(id: number, payrollId?: number, tx?: TxClient) {
     const db = tx || prisma;
+    if (payrollId) {
+      const payroll = await db.payrollPeriod.findUnique({ where: { id: payrollId }, select: { id: true, status: true } });
+      assertPayrollEditable(payroll, payrollId);
+    }
     const ca = await db.cashAdvance.update({ where: { id }, data: { isPaid: true, dateDeducted: new Date() } });
     if (payrollId) {
       await db.deduction.create({ data: { payrollId, type: 'CASH_ADVANCE', amount: ca.amount, notes: `Cash advance from ${new Date(ca.dateTaken).toISOString().split('T')[0]}` } });

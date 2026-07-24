@@ -4,6 +4,7 @@ import { NotFoundError } from '../../shared/errors';
 import { IncentiveCalculator, FormulaType, DEFAULT_INCENTIVE_CONFIG } from './calculators/incentive.calculator';
 import { RecalculationService } from '../payroll/calculators/recalculation.service';
 import { MonetaryRules } from '../../shared/utils/monetary.utils';
+import { assertPayrollEditable } from '../payroll/payroll-lock';
 
 interface CreateIncentiveInput {
   payrollId: number;
@@ -16,6 +17,11 @@ interface CreateIncentiveInput {
 
 export class IncentiveService {
   private recalculationService = new RecalculationService();
+
+  private async assertEditable(payrollId: number, db: TxClient | typeof prisma = prisma) {
+    const payroll = await db.payrollPeriod.findUnique({ where: { id: payrollId }, select: { id: true, status: true } });
+    assertPayrollEditable(payroll);
+  }
 
   async getConfig() {
     let configs = await prisma.incentiveConfig.findMany({
@@ -105,6 +111,7 @@ export class IncentiveService {
   async create(input: CreateIncentiveInput, tx?: TxClient) {
     const db = tx || prisma;
     const { payrollId, type, count, inputValue, rate, dateEarned } = input;
+    await this.assertEditable(payrollId, db);
     const config = await db.incentiveConfig.findUnique({ where: { type } }) 
       || DEFAULT_INCENTIVE_CONFIG.find((c) => c.type === type);
     const effectiveRate = rate ?? (config as any)?.rate ?? 0;
@@ -141,6 +148,7 @@ export class IncentiveService {
       where: { id: payrollId }, include: { employee: true },
     });
     if (!payroll) throw new NotFoundError('PayrollPeriod', payrollId);
+    assertPayrollEditable(payroll);
 
     const branchEmployees = await db.employee.findMany({
       where: { branchId: payroll.employee.branchId, isActive: true },
@@ -230,6 +238,9 @@ export class IncentiveService {
 
   async delete(id: number, tx?: TxClient) {
     const db = tx || prisma;
+    const existing = await db.incentive.findUnique({ where: { id }, select: { payrollId: true } });
+    if (!existing) throw new NotFoundError('Incentive', id);
+    await this.assertEditable(existing.payrollId, db);
     const incentive = await db.incentive.delete({ where: { id } });
     await this.recalculationService.recalculate(incentive.payrollId, tx);
     return { message: 'Incentive deleted successfully' };

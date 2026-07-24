@@ -2,6 +2,7 @@ import prisma from '../../../shared/database/prisma';
 import { TxClient } from '../../../shared/types/common.types';
 import { PayrollCalculator } from './payroll.calculator';
 import { MonetaryRules } from '../../../shared/utils/monetary.utils';
+import { assertPayrollEditable } from '../payroll-lock';
 
 export class RecalculationService {
   async recalculate(payrollId: number, tx?: TxClient): Promise<void> {
@@ -17,6 +18,7 @@ export class RecalculationService {
     });
 
     if (!payroll) return;
+    assertPayrollEditable(payroll);
 
     const totalIncentives = payroll.incentives.reduce((sum, i) => sum + MonetaryRules.fromDecimal(i.amount), 0);
     const totalDeductions = payroll.deductions.reduce((sum, d) => sum + MonetaryRules.fromDecimal(d.amount), 0);

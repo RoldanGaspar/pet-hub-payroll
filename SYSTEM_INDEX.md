@@ -160,17 +160,27 @@ PHPS/
 │       │   ├── Dashboard.tsx
 │       │   ├── Branches.tsx
 │       │   ├── Employees.tsx
-│       │   ├── Payroll.tsx                  # Largest page (~56 KB)
+│       │   ├── Payroll.tsx                  # Refactored: compact table + filter tabs + 3-tab drawer
 │       │   ├── Payslip.tsx
 │       │   ├── Payslips.tsx
 │       │   ├── CashAdvances.tsx
 │       │   └── IncentiveConfig.tsx
+│       ├── hooks/
+│       │   ├── useIncentiveSheet.ts         # Incentive sheet data fetching & distribution
+│       │   └── usePayrollFilters.ts         # Payroll exception detection & filter logic
 │       └── components/
 │           ├── layout/Layout.tsx, Header.tsx, Sidebar.tsx
+│           ├── CreatePeriodWizard.tsx       # Smart payroll period creation wizard
+│           ├── DistributionPreviewPanel.tsx # Incentive distribution preview
 │           ├── FixedDeductionsModal.tsx
 │           ├── IncentiveCalculatorModal.tsx
 │           ├── IncentiveExclusionsModal.tsx
-│           └── IncentiveSheetModal.tsx
+│           ├── IncentiveSheetGrid.tsx       # Daily incentive input grid
+│           ├── IncentiveSheetModal.tsx
+│           ├── PayrollFilterBar.tsx         # Smart filter tabs (All / Attention / Ready)
+│           ├── PayrollExpandedRow.tsx       # 3-tab drawer (Attendance / Incentives / Deductions)
+│           ├── PayrollOptionalDeductions.tsx # Cash advance input component
+│           └── PayrollEditableDeductions.tsx # Editable fixed deductions component
 │
 ├── report/                                 # Project documentation
 │   ├── SYSTEM_CONTEXT.md                   # Full system audit (909 lines)
@@ -627,7 +637,7 @@ npm run test:coverage # Coverage report
 ### Technical Debt
 | # | Issue | Location | Severity |
 |---|-------|----------|----------|
-| 1 | Empty directories in frontend (`components/payroll/`, `components/payslip/`, `components/ui/`, `hooks/`) | Frontend | Low |
+| 1 | Empty directories in frontend (`components/payroll/`, `components/payslip/`, `components/ui/`) | Frontend | Low |
 | 2 | Frontend `calculateRatePerDay` in helpers uses hardcoded 26 days | `helpers.ts` | Low |
 | 3 | No TypeScript strict null checks in backend | `tsconfig.json` | Low |
 | 4 | Decimal conversion via `Number()` can lose precision | Multiple routes | Low |

@@ -18,5 +18,8 @@ export const updatePayrollSchema = z.object({
   mealAllowance: z.number().min(0).optional(),
   silPay: z.number().min(0).optional(),
   birthdayLeave: z.number().min(0).optional(),
-  status: z.enum(['DRAFT', 'PENDING', 'APPROVED', 'PAID']).optional(),
+});
+
+export const payrollIdsSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1).max(200),
 });

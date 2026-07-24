@@ -92,10 +92,13 @@ export class EmployeeService {
     if (deductions && deductions.length > 0) {
       await prisma.fixedDeduction.createMany({ data: deductions.map((d: any) => ({ employeeId: id, type: d.type, amount: d.amount, category: d.category || 'OTHERS', isActive: true })) });
     }
-    const payrollPeriods = await prisma.payrollPeriod.findMany({ where: { employeeId: id }, select: { id: true, deductionDivisor: true } });
+    const payrollPeriods = await prisma.payrollPeriod.findMany({ where: { employeeId: id }, select: { id: true, deductionDivisor: true, status: true } });
     const updated = deductions && deductions.length > 0 ? deductions.filter((d: any) => d.amount > 0) : [];
     const recalc = new RecalculationService();
     for (const payroll of payrollPeriods) {
+      // Fixed-deduction settings apply only to payrolls that are still editable;
+      // finalized historical payslips must preserve their original values.
+      if (payroll.status === 'APPROVED' || payroll.status === 'PAID') continue;
       if (removedTypes.length > 0) await prisma.deduction.deleteMany({ where: { payrollId: payroll.id, type: { in: removedTypes } } });
       if (updated.length > 0) {
         await prisma.deduction.deleteMany({ where: { payrollId: payroll.id, type: { in: updated.map((d: any) => d.type) } } });

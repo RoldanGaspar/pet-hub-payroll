@@ -44,12 +44,19 @@ export const authApi = {
 
 // Branch API
 export const branchApi = {
-  getAll: () => api.get('/branches'),
+  getAll: (params?: { search?: string; type?: string; status?: string; sort?: string; order?: string }) =>
+    api.get('/branches', { params }),
   getById: (id: number) => api.get(`/branches/${id}`),
   create: (data: { name: string; address: string; contact?: string; type?: string }) =>
     api.post('/branches', data),
   update: (id: number, data: any) => api.put(`/branches/${id}`, data),
   delete: (id: number) => api.delete(`/branches/${id}`),
+  impact: (id: number, workingDaysPerMonth: number, workingHoursPerDay: number) =>
+    api.get(`/branches/${id}/impact`, { params: { workingDaysPerMonth, workingHoursPerDay } }),
+  updatePayrollSettings: (id: number, data: { workingDaysPerMonth: number; workingHoursPerDay: number }) =>
+    api.post(`/branches/${id}/payroll-settings`, data),
+  deactivate: (id: number) => api.post(`/branches/${id}/deactivate`),
+  reactivate: (id: number) => api.post(`/branches/${id}/reactivate`),
 };
 
 // Employee API
@@ -73,12 +80,18 @@ export const payrollApi = {
   getAll: (params?: { branchId?: number; startDate?: string; endDate?: string; status?: string }) =>
     api.get('/payroll', { params }),
   getById: (id: number) => api.get(`/payroll/${id}`),
+  getPreflight: (branchId: number) =>
+    api.get('/payroll/preflight', { params: { branchId } }),
   createPeriod: (data: { branchId: number; startDate: string; endDate: string; workingDays?: number }) =>
     api.post('/payroll/create-period', data),
   update: (id: number, data: any) => api.put(`/payroll/${id}`, data),
   calculate: (id: number) => api.post(`/payroll/${id}/calculate`),
+  calculateBatch: (ids: number[]) => api.post('/payroll/batch/calculate', { ids }),
+  approveBatch: (ids: number[]) => api.post('/payroll/batch/approve', { ids }),
+  reopen: (id: number) => api.post(`/payroll/${id}/reopen`),
   delete: (id: number) => api.delete(`/payroll/${id}`),
 };
+
 
 // Incentive API
 export const incentiveApi = {

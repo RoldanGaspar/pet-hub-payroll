@@ -277,8 +277,38 @@ export const INCENTIVE_LABELS: Record<string, string> = {
   MEDS_90: 'Meds 90%',
 };
 
-// Default incentive rates for display
+// Pre-flight check types for creating payroll periods
+export interface PreflightEmployee {
+
+  id: number;
+  name: string;
+  position: string;
+  salary: number;
+  ratePerDay: number;
+  ratePerHour: number;
+  hasSSS: boolean;
+  hasPhilHealth: boolean;
+  hasPagIBIG: boolean;
+  hasWTax: boolean;
+  missingDeductions: string[];
+}
+
+export interface PreflightWarning {
+  type: 'missing_deduction' | 'no_rate';
+  employeeId: number;
+  employeeName: string;
+  message: string;
+}
+
+export interface PreflightData {
+  branchName: string;
+  activeEmployeeCount: number;
+  employees: PreflightEmployee[];
+  warnings: PreflightWarning[];
+}
+
 export const DEFAULT_INCENTIVE_RATES: Record<string, { rate: number; formulaType: 'COUNT_MULTIPLY' | 'PERCENT'; isShared?: boolean }> = {
+
   CBC: { rate: 50, formulaType: 'COUNT_MULTIPLY' },
   BLOOD_CHEM: { rate: 100, formulaType: 'COUNT_MULTIPLY' },
   ULTRASOUND: { rate: 100, formulaType: 'COUNT_MULTIPLY' },

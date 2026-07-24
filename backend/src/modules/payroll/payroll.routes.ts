@@ -1,13 +1,30 @@
 import { Router, Response, NextFunction } from 'express';
-import { authMiddleware, AuthRequest } from '../../shared/middleware/auth.middleware';
+import { adminOnly, authMiddleware, AuthRequest } from '../../shared/middleware/auth.middleware';
 import { validate } from '../../shared/middleware/validation.middleware';
 import { PayrollService } from './payroll.service';
-import { createPeriodSchema, updatePayrollSchema } from './payroll.schema';
+import { PreflightService } from './preflight.service';
+import { createPeriodSchema, payrollIdsSchema, updatePayrollSchema } from './payroll.schema';
 
 const router = Router();
 const payrollService = new PayrollService();
+const preflightService = new PreflightService();
+
+// Pre-flight check: get employee readiness info before creating a period
+router.get('/preflight', authMiddleware, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const branchId = parseInt(req.query.branchId as string);
+    if (!branchId) {
+      return res.status(400).json({ error: 'branchId is required' });
+    }
+    const result = await preflightService.getPreflight(branchId);
+    return res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.get('/', authMiddleware, async (req: AuthRequest, res: Response, next: NextFunction) => {
+
   try {
     const branchId = req.query.branchId as string | undefined;
     const startDate = req.query.startDate as string | undefined;
@@ -48,6 +65,22 @@ router.post(
   }
 );
 
+router.post('/batch/calculate', authMiddleware, validate(payrollIdsSchema), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    return res.json(await payrollService.calculateBatch(req.body.ids));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/batch/approve', authMiddleware, validate(payrollIdsSchema), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    return res.json(await payrollService.approveBatch(req.body.ids));
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.put(
   '/:id',
   authMiddleware,
@@ -66,6 +99,14 @@ router.post('/:id/calculate', authMiddleware, async (req: AuthRequest, res: Resp
   try {
     const result = await payrollService.calculate(parseInt(req.params.id as string));
     return res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:id/reopen', authMiddleware, adminOnly, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    return res.json(await payrollService.reopenPayroll(parseInt(req.params.id as string)));
   } catch (error) {
     next(error);
   }
