@@ -61,8 +61,8 @@ export const branchApi = {
 
 // Employee API
 export const employeeApi = {
-  getAll: (branchId?: number) =>
-    api.get('/employees', { params: { branchId } }),
+  getAll: (branchId?: number, params?: { search?: string; status?: string; position?: string }) =>
+    api.get('/employees', { params: { branchId, ...params } }),
   getById: (id: number) => api.get(`/employees/${id}`),
   create: (data: any) => api.post('/employees', data),
   update: (id: number, data: any) => api.put(`/employees/${id}`, data),
@@ -143,7 +143,7 @@ export const deductionApi = {
 
 // Cash Advance API
 export const cashAdvanceApi = {
-  getAll: (params?: { employeeId?: number; isPaid?: boolean }) =>
+  getAll: (params?: { employeeId?: number; isPaid?: boolean; search?: string; branchId?: number }) =>
     api.get('/cash-advances', { params }),
   getById: (id: number) => api.get(`/cash-advances/${id}`),
   create: (data: any) => api.post('/cash-advances', data),
@@ -160,4 +160,18 @@ export const dashboardApi = {
     api.get('/dashboard/stats', { params: { branchId } }),
   getPayrollSummary: (startDate: string, endDate: string, branchId?: number) =>
     api.get('/dashboard/payroll-summary', { params: { startDate, endDate, branchId } }),
+  getMonthlyTrend: (months?: number, branchId?: number) =>
+    api.get('/dashboard/monthly-trend', { params: { months, branchId } }),
+  getBranchComparison: (month?: string, branchId?: number) =>
+    api.get('/dashboard/branch-comparison', { params: { month, branchId } }),
+  getFinancialBreakdown: (month?: string, branchId?: number) =>
+    api.get('/dashboard/financial-breakdown', { params: { month, branchId } }),
+  getEmployeeDistribution: (branchId?: number) =>
+    api.get('/dashboard/employee-distribution', { params: { branchId } }),
+  getAlerts: (branchId?: number) =>
+    api.get('/dashboard/alerts', { params: { branchId } }),
+  getPayrollCalendar: (month?: string, year?: string) =>
+    api.get('/dashboard/payroll-calendar', { params: { month, year } }),
+  getPayrollForecast: (branchId?: number) =>
+    api.get('/dashboard/payroll-forecast', { params: { branchId } }),
 };

@@ -1,13 +1,28 @@
 import prisma from '../../shared/database/prisma';
-import { NotFoundError } from '../../shared/errors';
+import { NotFoundError, ValidationError } from '../../shared/errors';
 import { RateCalculator } from '../payroll/calculators/rate.calculator';
 import { RecalculationService } from '../payroll/calculators/recalculation.service';
 import { PositionType, RateCalculationMethod } from '@prisma/client';
 
 export class EmployeeService {
-  async getAll(branchId?: number) {
-    const where: any = { isActive: true };
-    if (branchId) where.branchId = parseInt(String(branchId));
+  async getAll(query?: { branchId?: number; search?: string; status?: string; position?: string }) {
+    const where: any = {};
+    if (query?.status === 'active') where.isActive = true;
+    else if (query?.status === 'inactive') where.isActive = false;
+    else where.isActive = true;
+    if (query?.branchId) where.branchId = parseInt(String(query.branchId));
+    if (query?.position) where.position = query.position;
+    if (query?.search) {
+      const s = query.search;
+      where.OR = [
+        { name: { contains: s, mode: 'insensitive' } },
+        { position: { in: Object.values(PositionType).filter(p => p.toLowerCase().includes(s.toLowerCase())) } },
+        { sssNo: { contains: s, mode: 'insensitive' } },
+        { tinNo: { contains: s, mode: 'insensitive' } },
+        { philhealthNo: { contains: s, mode: 'insensitive' } },
+        { pagibigNo: { contains: s, mode: 'insensitive' } },
+      ];
+    }
     return prisma.employee.findMany({ where, include: { branch: true, fixedDeductions: { where: { isActive: true } } }, orderBy: { name: 'asc' } });
   }
 
@@ -73,6 +88,18 @@ export class EmployeeService {
   }
 
   async softDelete(id: number) {
+    const employee = await prisma.employee.findUnique({
+      where: { id },
+      include: { _count: { select: { payrollPeriods: true } } },
+    });
+    if (!employee) throw new NotFoundError('Employee', id);
+
+    if (employee._count.payrollPeriods > 0) {
+      throw new ValidationError(
+        `Cannot delete employee with ${employee._count.payrollPeriods} payroll records. Deactivate the employee instead, or remove payroll records first.`
+      );
+    }
+
     await prisma.employee.update({ where: { id }, data: { isActive: false } });
     return { message: 'Employee deleted successfully' };
   }

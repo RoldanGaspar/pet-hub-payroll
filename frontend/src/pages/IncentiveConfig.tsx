@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Settings, Save, RefreshCw, Info } from 'lucide-react';
 import Header from '../components/layout/Header';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { incentiveApi } from '../utils/api';
 import { IncentiveConfig, POSITION_LABELS } from '../types';
 import { formatCurrency } from '../utils/helpers';
@@ -88,27 +91,26 @@ export default function IncentiveConfigPage() {
 
         {/* Init button if no configs */}
         {configs && configs.length === 0 && (
-          <div className="card p-8 text-center mb-6">
+          <Card className="p-8 text-center mb-6">
             <Settings className="h-12 w-12 mx-auto mb-4 text-slate-300" />
             <h3 className="text-lg font-medium text-slate-900 mb-2">No Configurations Found</h3>
             <p className="text-slate-500 mb-4">Initialize the default incentive configurations to get started.</p>
-            <button
+            <Button
               onClick={() => initConfigMutation.mutate()}
-              className="btn-primary"
               disabled={initConfigMutation.isPending}
             >
               <RefreshCw className={`h-4 w-4 ${initConfigMutation.isPending ? 'animate-spin' : ''}`} />
               Initialize Default Configs
-            </button>
-          </div>
+            </Button>
+          </Card>
         )}
 
         {isLoading ? (
-          <div className="card p-8 text-center">
+          <Card className="p-8 text-center">
             <div className="w-8 h-8 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin mx-auto"></div>
-          </div>
+          </Card>
         ) : configs && configs.length > 0 ? (
-          <div className="card">
+          <Card>
             <div className="card-header flex items-center justify-between bg-gradient-to-r from-slate-50 to-white">
               <div>
                 <h3 className="font-bold text-lg text-slate-900">Incentive Rates</h3>
@@ -116,25 +118,25 @@ export default function IncentiveConfigPage() {
               </div>
             </div>
             <div className="table-container">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Type</th>
-                    <th>Name</th>
-                    <th>Rate</th>
-                    <th>Formula</th>
-                    <th>Applicable Positions</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Rate</TableHead>
+                    <TableHead>Formula</TableHead>
+                    <TableHead>Applicable Positions</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {configs.map((config: IncentiveConfig) => (
-                    <tr key={config.type}>
-                      <td>
+                    <TableRow key={config.type}>
+                      <TableCell>
                         <code className="text-xs bg-slate-100 px-2 py-1 rounded">{config.type}</code>
-                      </td>
-                      <td className="font-medium text-slate-900">{config.name}</td>
-                      <td>
+                      </TableCell>
+                      <TableCell className="font-medium text-slate-900">{config.name}</TableCell>
+                      <TableCell>
                         {editingType === config.type ? (
                           <div className="flex items-center gap-2">
                             <input
@@ -157,11 +159,11 @@ export default function IncentiveConfigPage() {
                             {formatRate(config)}
                           </button>
                         )}
-                      </td>
-                      <td>
+                      </TableCell>
+                      <TableCell>
                         <span className="text-sm text-slate-600">{getFormulaDisplay(config)}</span>
-                      </td>
-                      <td>
+                      </TableCell>
+                      <TableCell>
                         <div className="flex flex-wrap gap-1">
                           {config.positions?.map((pos) => (
                             <span
@@ -172,8 +174,8 @@ export default function IncentiveConfigPage() {
                             </span>
                           ))}
                         </div>
-                      </td>
-                      <td>
+                      </TableCell>
+                      <TableCell>
                         {editingType === config.type ? (
                           <div className="flex items-center gap-2">
                             <button
@@ -200,18 +202,18 @@ export default function IncentiveConfigPage() {
                             Edit
                           </button>
                         )}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
-          </div>
+          </Card>
         ) : null}
 
         {/* Legend */}
         <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="card p-5 border-l-4 border-l-blue-500">
+          <Card className="p-5 border-l-4 border-l-blue-500">
             <h4 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
               <span className="w-1 h-5 bg-blue-500 rounded-full"></span>
               Formula Types
@@ -226,9 +228,9 @@ export default function IncentiveConfigPage() {
                 <p className="text-slate-600">Input is a peso amount. Calculated as: Amount × Percentage Rate</p>
               </div>
             </div>
-          </div>
+          </Card>
 
-          <div className="card p-5 border-l-4 border-l-purple-500">
+          <Card className="p-5 border-l-4 border-l-purple-500">
             <h4 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
               <span className="w-1 h-5 bg-purple-500 rounded-full"></span>
               Position Categories
@@ -247,7 +249,7 @@ export default function IncentiveConfigPage() {
                 <span className="text-slate-600 ml-2">Surgery, Emergency, Confinement (Asst), Nursing</span>
               </div>
             </div>
-          </div>
+          </Card>
         </div>
       </div>
     </>

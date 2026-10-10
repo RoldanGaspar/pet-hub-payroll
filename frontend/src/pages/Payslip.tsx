@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useReactToPrint } from 'react-to-print';
 import { ArrowLeft, Printer } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import Header from '../components/layout/Header';
 import { payrollApi } from '../utils/api';
 import { POSITION_LABELS, INCENTIVE_LABELS, DEDUCTION_LABELS, type PositionType } from '../types';
@@ -61,9 +62,9 @@ export default function Payslip() {
           <Link to="/payroll" className="btn-secondary">
             <ArrowLeft className="h-4 w-4" /> Back to Payroll
           </Link>
-          <button onClick={() => handlePrint()} className="btn-primary">
+          <Button onClick={() => handlePrint()}>
             <Printer className="h-5 w-5" /> Print Payslip
-          </button>
+          </Button>
         </div>
 
         {/* Payslip Document */}

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Save, Send, CheckCircle2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { payrollApi } from '../utils/api';
 import { PayrollPeriod } from '../types';
 import { formatDateRange } from '../utils/helpers';
@@ -88,9 +89,9 @@ export default function IncentiveSheetPage() {
       <div className="h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
           <p className="text-slate-500 text-lg">Invalid payroll period</p>
-          <button onClick={() => navigate('/payroll')} className="btn-primary mt-4">
+          <Button onClick={() => navigate('/payroll')}>
             Back to Payroll
-          </button>
+          </Button>
         </div>
       </div>
     );

@@ -3,16 +3,27 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Building2, MapPin, Phone, Users, Settings, Clock, Calendar,
-  AlertTriangle, ShieldOff, RefreshCw, ArrowLeft,
+  AlertTriangle, ShieldOff, RefreshCw,
+  Info,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import Header from '../components/layout/Header';
-import { branchApi } from '../utils/api';
+import { branchApi, employeeApi } from '../utils/api';
 import { formatCurrency, cn } from '../utils/helpers';
-import { BRANCH_TYPE_LABELS, type BranchType } from '../types';
+import { BRANCH_TYPE_LABELS, POSITION_LABELS, type BranchType, type Employee } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { toast } from 'sonner';
 
 export default function BranchDetails() {
   const { branchId } = useParams<{ branchId: string }>();
   const id = parseInt(branchId || '0');
+  const { user } = useAuth();
+
+  const isAdmin = user?.role === 'ADMIN';
+
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'overview' | 'employees' | 'settings'>('overview');
   const [showDeactivateDialog, setShowDeactivateDialog] = useState(false);
@@ -33,18 +44,63 @@ export default function BranchDetails() {
     enabled: showSettingsDialog && newWorkingDays > 0,
   });
 
+  const employeesQuery = useQuery({
+    queryKey: ['employees', { branchId: id }],
+    queryFn: () => employeeApi.getAll(id).then(r => r.data),
+    enabled: activeTab === 'employees' && id > 0,
+  });
+
   const deactivateMutation = useMutation({
     mutationFn: () => branchApi.deactivate(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['branch', id] }); setShowDeactivateDialog(false); },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['branch', id] });
+      const prev = queryClient.getQueryData(['branch', id]);
+      queryClient.setQueryData(['branch', id], (old: any) => old ? { ...old, isActive: false } : old);
+      return { prev };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['branch', id] });
+      toast.success('Branch deactivated successfully');
+      setShowDeactivateDialog(false);
+    },
+    onError: (err: any, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(['branch', id], ctx.prev);
+      toast.error(err.response?.data?.error || 'Failed to deactivate branch');
+    },
+  });
+
+  const reactivateMutation = useMutation({
+    mutationFn: () => branchApi.reactivate(id),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['branch', id] });
+      const prev = queryClient.getQueryData(['branch', id]);
+      queryClient.setQueryData(['branch', id], (old: any) => old ? { ...old, isActive: true } : old);
+      return { prev };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['branch', id] });
+      toast.success('Branch reactivated successfully');
+    },
+    onError: (err: any, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(['branch', id], ctx.prev);
+      toast.error(err.response?.data?.error || 'Failed to reactivate branch');
+    },
   });
 
   const settingsMutation = useMutation({
-    mutationFn: () => branchApi.updatePayrollSettings(id, { workingDaysPerMonth: newWorkingDays, workingHoursPerDay: newWorkingHours }),
-    onSuccess: () => {
+    mutationFn: () => branchApi.updatePayrollSettings(id, {
+      workingDaysPerMonth: newWorkingDays,
+      workingHoursPerDay: newWorkingHours,
+    }),
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['branch', id] });
       queryClient.invalidateQueries({ queryKey: ['branches'] });
+      toast.success(`Payroll settings updated. ${res.data?.affectedEmployees || 0} employees recalculated.`);
       setShowSettingsDialog(false);
       setConfirmChecked(false);
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.error || 'Failed to update payroll settings');
     },
   });
 
@@ -63,25 +119,27 @@ export default function BranchDetails() {
       <Header title={branch?.name || 'Branch Details'} subtitle="Branch management & payroll settings" />
 
       <div className="p-6">
-        <Link to="/branches" className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700 mb-4">
-          <ArrowLeft className="h-4 w-4" /> Back to Branches
-        </Link>
+        <nav className="flex items-center gap-2 text-sm text-slate-500 mb-4">
+          <Link to="/branches" className="hover:text-slate-700 transition-colors">Branches</Link>
+          <span className="text-slate-300">/</span>
+          <span className="font-medium text-slate-900 truncate">{branch?.name}</span>
+        </nav>
 
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
-          {/* Status banner */}
+        <Card>
           {!branch?.isActive && (
             <div className="px-6 py-3 bg-amber-50 border-b border-amber-200 flex items-center justify-between rounded-t-xl">
               <div className="flex items-center gap-2 text-amber-700">
                 <AlertTriangle className="h-5 w-5" />
                 <span className="font-medium">This branch is deactivated</span>
               </div>
-              <button onClick={() => { branchApi.reactivate(id).then(() => queryClient.invalidateQueries({ queryKey: ['branch', id] })); }} className="btn-secondary text-sm py-1">
-                <RefreshCw className="h-4 w-4" /> Reactivate
-              </button>
+              {isAdmin && (
+                <Button variant="outline" onClick={() => reactivateMutation.mutate()} className="text-sm py-1">
+                  <RefreshCw className="h-4 w-4" /> Reactivate
+                </Button>
+              )}
             </div>
           )}
 
-          {/* Tabs */}
           <div className="flex border-b border-slate-200 px-6">
             {tabs.map(t => (
               <button
@@ -109,13 +167,13 @@ export default function BranchDetails() {
                     <InfoCard icon={ShieldOff} label="Status" value={branch?.isActive ? 'Active' : 'Inactive'} />
                   </div>
 
-                  <div className="flex gap-3 pt-4">
-                    {branch?.isActive && (
-                      <button onClick={() => setShowDeactivateDialog(true)} className="btn-secondary text-red-600 border-red-200 hover:bg-red-50 text-sm">
+                  {isAdmin && branch?.isActive && (
+                    <div className="flex gap-3 pt-4">
+                      <Button variant="outline" onClick={() => setShowDeactivateDialog(true)} className="text-red-600 border-red-200 hover:bg-red-50 text-sm">
                         <ShieldOff className="h-4 w-4" /> Deactivate Branch
-                      </button>
-                    )}
-                  </div>
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-4">
@@ -126,13 +184,15 @@ export default function BranchDetails() {
                     <InfoCard icon={Users} label="Active Employees" value={String(branch?.employeeCount || 0)} />
                     <InfoCard icon={Settings} label="Rate Formula" value={branch?.workingDaysPerMonth === 22 ? 'Standard (22 days)' : `Custom (${branch?.workingDaysPerMonth} days)`} />
                   </div>
-                  <button onClick={() => {
-                    setNewWorkingDays(branch?.workingDaysPerMonth || 22);
-                    setNewWorkingHours(branch?.workingHoursPerDay || 8);
-                    setShowSettingsDialog(true);
-                  }} className="btn-secondary text-sm">
-                    <Settings className="h-4 w-4" /> Change Payroll Settings
-                  </button>
+                  {isAdmin && (
+                    <Button variant="outline" onClick={() => {
+                      setNewWorkingDays(branch?.workingDaysPerMonth || 22);
+                      setNewWorkingHours(branch?.workingHoursPerDay || 8);
+                      setShowSettingsDialog(true);
+                    }} className="text-sm">
+                      <Settings className="h-4 w-4" /> Change Payroll Settings
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
@@ -147,21 +207,117 @@ export default function BranchDetails() {
                     View all in Employees →
                   </Link>
                 </div>
+                {employeesQuery.isLoading ? (
+                  <div className="animate-pulse space-y-2">
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="h-12 bg-slate-200 rounded-lg" />
+                    ))}
+                  </div>
+                ) : employeesQuery.data && employeesQuery.data.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Position</TableHead>
+                          <TableHead>Salary</TableHead>
+                          <TableHead>Rate/Day</TableHead>
+                          <TableHead>Rate/Hour</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {employeesQuery.data.slice(0, 10).map((emp: Employee) => (
+                          <TableRow key={emp.id}>
+                            <TableCell className="font-medium text-slate-900">{emp.name}</TableCell>
+                            <TableCell className="text-slate-500">{POSITION_LABELS[emp.position]}</TableCell>
+                            <TableCell>{formatCurrency(emp.salary)}</TableCell>
+                            <TableCell>{formatCurrency(emp.ratePerDay)}</TableCell>
+                            <TableCell>{formatCurrency(emp.ratePerHour)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                    {employeesQuery.data.length > 10 && (
+                      <p className="text-sm text-slate-500 mt-3 text-center">
+                        Showing 10 of {employeesQuery.data.length} employees
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500 py-8 text-center">No active employees in this branch.</p>
+                )}
               </div>
             )}
 
             {activeTab === 'settings' && (
-              <div className="space-y-4">
-                <h3 className="font-semibold text-slate-900">Payroll Settings History</h3>
-                <p className="text-sm text-slate-500">Audit trail for payroll configuration changes will appear here.</p>
+              <div className="space-y-6">
+                <h3 className="font-semibold text-slate-900">Payroll Settings</h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Calendar className="h-5 w-5 text-primary-600" />
+                      <span className="font-medium text-slate-700">Working Days Per Month</span>
+                    </div>
+                    <p className="text-3xl font-bold text-slate-900">{branch?.workingDaysPerMonth}</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Used for Monthly rate formula: Salary / D = Rate/Day
+                    </p>
+                  </div>
+
+                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Clock className="h-5 w-5 text-primary-600" />
+                      <span className="font-medium text-slate-700">Working Hours Per Day</span>
+                    </div>
+                    <p className="text-3xl font-bold text-slate-900">{branch?.workingHoursPerDay}</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Used for: Rate/Day / H = Rate/Hour
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                  <div className="flex items-start gap-3">
+                    <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <h4 className="font-medium text-blue-800 mb-2">How Rates Are Calculated</h4>
+                      <div className="text-sm text-blue-700 space-y-2">
+                        <div className="p-2 bg-white/50 rounded">
+                          <span className="font-medium">Monthly Method (Resident Vets):</span><br />
+                          Rate/Day = Salary / {branch?.workingDaysPerMonth} days<br />
+                          Rate/Hour = Rate/Day / {branch?.workingHoursPerDay} hours
+                        </div>
+                        <div className="p-2 bg-white/50 rounded">
+                          <span className="font-medium">Annual Method (All others):</span><br />
+                          Rate/Day = (Salary x 12) / 313 days<br />
+                          Rate/Hour = Rate/Day / {branch?.workingHoursPerDay} hours
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {isAdmin && (
+                  <Button variant="outline"
+                    onClick={() => {
+                      setNewWorkingDays(branch?.workingDaysPerMonth || 22);
+                      setNewWorkingHours(branch?.workingHoursPerDay || 8);
+                      setShowSettingsDialog(true);
+                    }}
+                    className="text-sm"
+                  >
+                    <Settings className="h-4 w-4" /> Change Payroll Settings
+                  </Button>
+                )}
               </div>
             )}
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Deactivate Dialog */}
-      {showDeactivateDialog && (
+      {isAdmin && showDeactivateDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
             <h3 className="text-lg font-semibold text-slate-900 mb-2">Deactivate Branch?</h3>
@@ -171,21 +327,21 @@ export default function BranchDetails() {
                 : 'This branch has no active employees. It can be safely deactivated.'}
             </p>
             <div className="flex gap-3 justify-end">
-              <button onClick={() => setShowDeactivateDialog(false)} className="btn-secondary">Cancel</button>
-              <button
+              <Button variant="outline" onClick={() => setShowDeactivateDialog(false)}>Cancel</Button>
+              <Button
                 onClick={() => deactivateMutation.mutate()}
                 disabled={(branch?.employeeCount || 0) > 0}
-                className="btn-primary bg-red-600 hover:bg-red-700 disabled:opacity-50"
+                className="bg-red-600 hover:bg-red-700 disabled:opacity-50"
               >
                 {deactivateMutation.isPending ? 'Deactivating...' : 'Deactivate'}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
       )}
 
       {/* Payroll Settings Dialog */}
-      {showSettingsDialog && (
+      {isAdmin && showSettingsDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 overflow-y-auto">
           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-6 my-8">
             <h3 className="text-lg font-semibold text-slate-900 mb-1">Change Payroll Settings</h3>
@@ -196,13 +352,13 @@ export default function BranchDetails() {
             <div className="grid grid-cols-2 gap-4 mb-6">
               <div>
                 <label className="label">Working Days Per Month</label>
-                <input type="number" min={1} max={31} value={newWorkingDays}
-                  onChange={e => setNewWorkingDays(parseInt(e.target.value) || 22)} className="input" />
+                <Input type="number" min={1} max={31} value={newWorkingDays}
+                  onChange={e => setNewWorkingDays(parseInt(e.target.value) || 22)} />
               </div>
               <div>
                 <label className="label">Working Hours Per Day</label>
-                <input type="number" min={1} max={24} value={newWorkingHours}
-                  onChange={e => setNewWorkingHours(parseInt(e.target.value) || 8)} className="input" />
+                <Input type="number" min={1} max={24} value={newWorkingHours}
+                  onChange={e => setNewWorkingHours(parseInt(e.target.value) || 8)} />
               </div>
             </div>
 
@@ -248,14 +404,14 @@ export default function BranchDetails() {
             </label>
 
             <div className="flex gap-3 justify-end">
-              <button onClick={() => { setShowSettingsDialog(false); setConfirmChecked(false); }} className="btn-secondary">Cancel</button>
-              <button
+              <Button variant="outline" onClick={() => { setShowSettingsDialog(false); setConfirmChecked(false); }}>Cancel</Button>
+              <Button
                 onClick={() => settingsMutation.mutate()}
                 disabled={!confirmChecked || settingsMutation.isPending}
-                className="btn-primary disabled:opacity-50"
+                className="disabled:opacity-50"
               >
                 {settingsMutation.isPending ? 'Saving...' : 'Save Changes'}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

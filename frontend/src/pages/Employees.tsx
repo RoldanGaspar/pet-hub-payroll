@@ -1,19 +1,29 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Edit, Trash2, Users, Search, Info, Receipt, Ban } from 'lucide-react';
+import { Plus, Edit, Trash2, Users, Search, Info, Receipt, Ban, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import Header from '../components/layout/Header';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { employeeApi, branchApi } from '../utils/api';
 import { Employee, Branch, POSITION_LABELS, PositionType, RateCalculationMethod } from '../types';
 import { formatCurrency, cn } from '../utils/helpers';
+import { useAuth } from '../context/AuthContext';
+import { toast } from 'sonner';
 import FixedDeductionsModal from '../components/FixedDeductionsModal';
 import IncentiveExclusionsModal from '../components/IncentiveExclusionsModal';
 
-// Constants for rate calculation
 const ANNUAL_WORKING_DAYS = 313;
 const DEFAULT_WORKING_DAYS_PER_MONTH = 22;
 const DEFAULT_WORKING_HOURS_PER_DAY = 8;
 
-// Calculate rates based on calculation method (no longer position-dependent)
 function calculateRates(
   salary: number,
   calculationMethod: RateCalculationMethod,
@@ -21,40 +31,43 @@ function calculateRates(
   branchHoursPerDay: number = DEFAULT_WORKING_HOURS_PER_DAY
 ): { ratePerDay: number; ratePerHour: number } {
   if (calculationMethod === 'ANNUAL') {
-    // Annual formula: (Salary × 12) ÷ 313, then Rate/Hour = Rate/Day ÷ H
     const annualSalary = salary * 12;
     const ratePerDay = Math.round((annualSalary / ANNUAL_WORKING_DAYS) * 100) / 100;
     const ratePerHour = Math.round((ratePerDay / branchHoursPerDay) * 100) / 100;
     return { ratePerDay, ratePerHour };
   } else {
-    // Monthly formula: Salary ÷ D (branch days)
     const ratePerDay = Math.round((salary / branchDaysPerMonth) * 100) / 100;
     const ratePerHour = Math.round((ratePerDay / branchHoursPerDay) * 100) / 100;
     return { ratePerDay, ratePerHour };
   }
 }
 
-// Get formula description based on calculation method
 function getFormulaDescription(calculationMethod: RateCalculationMethod): string {
   if (calculationMethod === 'ANNUAL') {
-    return 'Annual: (Salary × 12) ÷ 313';
+    return 'Annual: (Salary x 12) / 313';
   }
-  return 'Monthly: Salary ÷ D (branch days)';
+  return 'Monthly: Salary / D (branch days)';
 }
 
-// Get default calculation method for a position (suggestion only, not enforced)
 function getDefaultCalculationMethod(position: PositionType): RateCalculationMethod {
   return position === 'RESIDENT_VETERINARIAN' ? 'MONTHLY' : 'ANNUAL';
 }
 
 export default function Employees() {
+  const { user } = useAuth();
+
+  const isAdmin = user?.role === 'ADMIN';
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('active');
+  const [positionFilter, setPositionFilter] = useState<string>('');
   const [recalculateRates, setRecalculateRates] = useState(true);
   const [deductionsEmployee, setDeductionsEmployee] = useState<Employee | null>(null);
   const [exclusionsEmployee, setExclusionsEmployee] = useState<Employee | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null);
   const [formData, setFormData] = useState({
     branchId: '',
     name: '',
@@ -79,18 +92,23 @@ export default function Employees() {
   });
 
   const { data: employees, isLoading } = useQuery({
-    queryKey: ['employees', selectedBranch],
+    queryKey: ['employees', selectedBranch, searchQuery, statusFilter, positionFilter],
     queryFn: () =>
-      employeeApi.getAll(selectedBranch ? parseInt(selectedBranch) : undefined).then((res) => res.data),
+      employeeApi.getAll(
+        selectedBranch ? parseInt(selectedBranch) : undefined,
+        {
+          search: searchQuery || undefined,
+          status: statusFilter,
+          position: positionFilter || undefined,
+        }
+      ).then((res) => res.data),
   });
 
-  // Get selected branch settings
   const selectedBranchData = useMemo(() => {
     if (!formData.branchId || !branches) return null;
     return branches.find((b: Branch) => b.id === parseInt(formData.branchId));
   }, [formData.branchId, branches]);
 
-  // Calculate rates when salary or calculationMethod changes (for new employees or when recalculate is checked)
   useEffect(() => {
     const salaryValue = parseFloat(formData.salary) || 0;
     if (salaryValue > 0 && (!editingEmployee || recalculateRates)) {
@@ -109,14 +127,15 @@ export default function Employees() {
     mutationFn: (data: any) => employeeApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
-      // Invalidate payroll queries to sync employee changes
       queryClient.invalidateQueries({ queryKey: ['payrolls'] });
       queryClient.invalidateQueries({ queryKey: ['payroll'] });
-      // Invalidate dashboard stats
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
-      // Refetch immediately for real-time updates
       queryClient.refetchQueries({ queryKey: ['payrolls'] });
+      toast.success('Employee created successfully');
       closeModal();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.error || 'Failed to create employee');
     },
   });
 
@@ -125,15 +144,16 @@ export default function Employees() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       queryClient.invalidateQueries({ queryKey: ['employee', editingEmployee?.id] });
-      // Invalidate all payroll queries to sync employee changes to payroll and payslip views
       queryClient.invalidateQueries({ queryKey: ['payrolls'] });
       queryClient.invalidateQueries({ queryKey: ['payroll'] });
-      // Invalidate dashboard stats
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
-      // Refetch immediately for real-time updates (no page refresh needed)
       queryClient.refetchQueries({ queryKey: ['payrolls'] });
       queryClient.refetchQueries({ queryKey: ['payroll'] });
+      toast.success('Employee updated successfully');
       closeModal();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.error || 'Failed to update employee');
     },
   });
 
@@ -141,18 +161,23 @@ export default function Employees() {
     mutationFn: (id: number) => employeeApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
-      // Invalidate payroll queries when employee is deleted
       queryClient.invalidateQueries({ queryKey: ['payrolls'] });
       queryClient.invalidateQueries({ queryKey: ['payroll'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
       queryClient.refetchQueries({ queryKey: ['payrolls'] });
+      toast.success('Employee deleted successfully');
+      setDeleteTarget(null);
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.error || 'Failed to delete employee');
+      setDeleteTarget(null);
     },
   });
 
   const openModal = (employee?: Employee) => {
     if (employee) {
       setEditingEmployee(employee);
-      setRecalculateRates(false); // Default to keeping current rates when editing
+      setRecalculateRates(false);
       setFormData({
         branchId: employee.branchId.toString(),
         name: employee.name,
@@ -212,171 +237,209 @@ export default function Employees() {
     }
   };
 
-  const handleDelete = (employee: Employee) => {
-    if (window.confirm(`Are you sure you want to delete ${employee.name}?`)) {
-      deleteMutation.mutate(employee.id);
-    }
-  };
-
-  const filteredEmployees = employees?.filter((emp: Employee) =>
-    emp.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
   const formulaDescription = getFormulaDescription(formData.calculationMethod);
+  const hasFilters = searchQuery || statusFilter !== 'active' || positionFilter;
 
   return (
     <>
       <Header title="Employees" subtitle="Manage employee records and information" />
 
       <div className="p-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-          <div className="flex items-center gap-4 w-full sm:w-auto">
-            <div className="relative flex-1 sm:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search employees..."
-                className="input pl-10"
-              />
-            </div>
+        {/* Search & Filter Bar */}
+        <div className="flex flex-wrap items-center gap-3 mb-6">
+          <div className="relative flex-1 min-w-[200px] max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by name, position, SSS, TIN..."
+              className="pl-10"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
             <select
               value={selectedBranch}
               onChange={(e) => setSelectedBranch(e.target.value)}
-              className="input w-auto"
+              className="input py-2 w-auto"
             >
               <option value="">All Branches</option>
               {branches?.map((branch: Branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
-                </option>
+                <option key={branch.id} value={branch.id}>{branch.name}</option>
               ))}
             </select>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="input py-2 w-auto"
+            >
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="all">All Status</option>
+            </select>
+
+            <select
+              value={positionFilter}
+              onChange={(e) => setPositionFilter(e.target.value)}
+              className="input py-2 w-auto"
+            >
+              <option value="">All Positions</option>
+              {Object.entries(POSITION_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+
+            {hasFilters && (
+              <button
+                onClick={() => { setSearchQuery(''); setStatusFilter('active'); setPositionFilter(''); }}
+                className="text-sm text-slate-500 hover:text-slate-700 flex items-center gap-1"
+              >
+                <X className="h-3 w-3" /> Clear
+              </button>
+            )}
           </div>
-          <button onClick={() => openModal()} className="btn-primary whitespace-nowrap">
-            <Plus className="h-4 w-4" />
-            Add Employee
-          </button>
+
+          <div className="text-sm text-slate-500 ml-auto">
+            {employees?.length || 0} employee{(employees?.length || 0) !== 1 ? 's' : ''}
+          </div>
+
+          {isAdmin && (
+            <Button onClick={() => openModal()} className="whitespace-nowrap">
+              <Plus className="h-4 w-4" />
+              Add Employee
+            </Button>
+          )}
         </div>
 
-        <div className="card">
-          <div className="table-container">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Branch</th>
-                  <th>Position</th>
-                  <th>Salary</th>
-                  <th>Rate/Day</th>
-                  <th>Rate/Hour</th>
-                  <th>Deductions</th>
-                  <th>Status</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading ? (
-                  <tr>
-                    <td colSpan={9} className="text-center py-8">
-                      <div className="flex justify-center">
-                        <div className="w-6 h-6 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
-                      </div>
-                    </td>
-                  </tr>
-                ) : filteredEmployees?.length > 0 ? (
-                  filteredEmployees.map((employee: Employee) => (
-                    <tr key={employee.id}>
-                      <td>
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center text-sm font-medium">
-                            {employee.name.charAt(0)}
-                          </div>
-                          <div>
-                            <p className="font-medium text-slate-900">{employee.name}</p>
-                            <p className="text-xs text-slate-500">{employee.sssNo || 'No SSS'}</p>
-                          </div>
+        <Card>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Employee</TableHead>
+                <TableHead>Branch</TableHead>
+                <TableHead>Position</TableHead>
+                <TableHead>Salary</TableHead>
+                <TableHead>Rate/Day</TableHead>
+                <TableHead>Rate/Hour</TableHead>
+                <TableHead>Deductions</TableHead>
+                <TableHead>Status</TableHead>
+                {isAdmin && <TableHead></TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={isAdmin ? 9 : 8} className="text-center py-8">
+                    <div className="flex justify-center">
+                      <div className="w-6 h-6 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : employees?.length > 0 ? (
+                employees.map((employee: Employee) => (
+                  <TableRow key={employee.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center text-sm font-medium">
+                          {employee.name.charAt(0)}
                         </div>
-                      </td>
-                      <td className="text-slate-600">{employee.branch?.name}</td>
-                      <td>
-                        <span className="text-sm">{POSITION_LABELS[employee.position]}</span>
-                      </td>
-                      <td className="font-medium">{formatCurrency(employee.salary)}</td>
-                      <td className="text-primary-600 font-medium">{formatCurrency(employee.ratePerDay)}</td>
-                      <td className="text-slate-600">{formatCurrency(employee.ratePerHour)}</td>
-                      <td>
-                        <button
-                          onClick={() => setDeductionsEmployee(employee)}
-                          className="text-sm text-emerald-600 hover:text-emerald-700 hover:underline font-medium"
-                        >
-                          {employee.fixedDeductions && employee.fixedDeductions.length > 0
-                            ? formatCurrency(
-                                employee.fixedDeductions.reduce(
-                                  (sum, d) => sum + Number(d.amount),
-                                  0
-                                )
+                        <div>
+                          <p className="font-medium text-slate-900">{employee.name}</p>
+                          <p className="text-xs text-slate-500">{employee.sssNo || 'No SSS'}</p>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-slate-600">{employee.branch?.name}</TableCell>
+                    <TableCell>
+                      <span className="text-sm">{POSITION_LABELS[employee.position]}</span>
+                    </TableCell>
+                    <TableCell className="font-medium">{formatCurrency(employee.salary)}</TableCell>
+                    <TableCell className="text-primary-600 font-medium">{formatCurrency(employee.ratePerDay)}</TableCell>
+                    <TableCell className="text-slate-600">{formatCurrency(employee.ratePerHour)}</TableCell>
+                    <TableCell>
+                      <button
+                        onClick={() => setDeductionsEmployee(employee)}
+                        className="text-sm text-emerald-600 hover:text-emerald-700 hover:underline font-medium"
+                      >
+                        {employee.fixedDeductions && employee.fixedDeductions.length > 0
+                          ? formatCurrency(
+                              employee.fixedDeductions.reduce(
+                                (sum, d) => sum + Number(d.amount),
+                                0
                               )
-                            : '₱0.00'}
-                        </button>
-                      </td>
-                      <td>
-                        <span
-                          className={cn(
-                            'badge',
-                            employee.isActive ? 'badge-success' : 'bg-slate-100 text-slate-600'
-                          )}
-                        >
-                          {employee.isActive ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td>
+                            )
+                          : '0.00'}
+                      </button>
+                    </TableCell>
+                    <TableCell>
+                      {employee.isActive ? (
+                        <Badge variant="default" className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Active</Badge>
+                      ) : (
+                        <Badge variant="secondary">Inactive</Badge>
+                      )}
+                    </TableCell>
+                    {isAdmin && (
+                      <TableCell>
                         <div className="flex items-center gap-1 justify-end">
-                          <button
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             onClick={() => setDeductionsEmployee(employee)}
-                            className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg"
+                            className="text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg"
                             title="Fixed Deductions"
                           >
                             <Receipt className="h-4 w-4" />
-                          </button>
-                          <button
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             onClick={() => setExclusionsEmployee(employee)}
-                            className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg"
-                            title="Incentive Exclusions (NOT INCLUDED)"
+                            className="text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg"
+                            title="Incentive Exclusions"
                           >
                             <Ban className="h-4 w-4" />
-                          </button>
-                          <button
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             onClick={() => openModal(employee)}
-                            className="p-2 text-slate-400 hover:text-primary-600 hover:bg-slate-100 rounded-lg"
+                            className="text-slate-400 hover:text-primary-600 hover:bg-slate-100 rounded-lg"
                             title="Edit Employee"
                           >
                             <Edit className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(employee)}
-                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setDeleteTarget(employee)}
+                            className="text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
                             title="Delete"
                           >
                             <Trash2 className="h-4 w-4" />
-                          </button>
+                          </Button>
                         </div>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={9} className="text-center py-8 text-slate-500">
-                      <Users className="h-8 w-8 mx-auto mb-2 text-slate-300" />
-                      No employees found
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={isAdmin ? 9 : 8} className="text-center py-8 text-slate-500">
+                    <Users className="h-8 w-8 mx-auto mb-2 text-slate-300" />
+                    {hasFilters ? 'No employees match your filters' : 'No employees found'}
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </Card>
 
         {/* Modal */}
         {isModalOpen && (
@@ -397,11 +460,11 @@ export default function Employees() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="md:col-span-2">
                       <label className="label">Full Name</label>
-                      <input
+                      <Input
                         type="text"
                         value={formData.name}
                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        className="input"
+                        className=""
                         placeholder="Juan Dela Cruz"
                         required
                       />
@@ -444,11 +507,11 @@ export default function Employees() {
 
                     <div>
                       <label className="label">Monthly Salary</label>
-                      <input
+                      <Input
                         type="number"
                         value={formData.salary}
                         onChange={(e) => setFormData({ ...formData, salary: e.target.value })}
-                        className="input"
+                        className=""
                         placeholder="15000"
                         required
                       />
@@ -456,25 +519,22 @@ export default function Employees() {
 
                     <div>
                       <label className="label">Date Hired</label>
-                      <input
+                      <Input
                         type="date"
                         value={formData.hiredOn}
                         onChange={(e) => setFormData({ ...formData, hiredOn: e.target.value })}
-                        className="input"
+                        className=""
                       />
                     </div>
 
-                    {/* Rate Calculation Section */}
                     <div className="md:col-span-2 border-2 border-primary-200 rounded-lg p-5 bg-gradient-to-br from-primary-50 to-white">
                       <div className="flex items-center justify-between mb-4">
                         <h4 className="font-semibold text-slate-900 text-base">Rate Calculation</h4>
                       </div>
 
-                      {/* Two-Button Formula Selector */}
                       <div className="mb-4">
                         <label className="label mb-2">Calculation Method</label>
                         <div className="grid grid-cols-2 gap-3">
-                          {/* Annual Formula Button */}
                           <button
                             type="button"
                             onClick={() => {
@@ -502,10 +562,9 @@ export default function Employees() {
                             <span className={cn(
                               'text-xs text-center leading-relaxed',
                               formData.calculationMethod === 'ANNUAL' ? 'text-primary-600' : 'text-slate-500'
-                            )}>(Salary × 12) ÷ 313</span>
+                            )}>(Salary x 12) / 313</span>
                           </button>
 
-                          {/* Monthly Formula Button */}
                           <button
                             type="button"
                             onClick={() => {
@@ -533,18 +592,16 @@ export default function Employees() {
                             <span className={cn(
                               'text-xs text-center leading-relaxed',
                               formData.calculationMethod === 'MONTHLY' ? 'text-amber-600' : 'text-slate-500'
-                            )}>Salary ÷ D (branch days)</span>
+                            )}>Salary / D (branch days)</span>
                           </button>
                         </div>
                       </div>
 
-                      {/* Active formula indicator */}
                       <div className="flex items-center gap-2 text-xs font-medium px-3 py-1.5 bg-primary-100 text-primary-700 rounded-full w-fit mb-4">
                         <Info className="h-3.5 w-3.5" />
                         <span>{formulaDescription}</span>
                       </div>
 
-                      {/* Recalculate checkbox - only shown when editing */}
                       {editingEmployee && (
                         <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                           <label className="flex items-center gap-2 cursor-pointer">
@@ -564,7 +621,7 @@ export default function Employees() {
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="label">Rate/Day</label>
-                          <input
+                          <Input
                             type="number"
                             step="0.01"
                             value={formData.ratePerDay}
@@ -572,14 +629,14 @@ export default function Employees() {
                               setFormData({ ...formData, ratePerDay: e.target.value });
                               if (editingEmployee) setRecalculateRates(false);
                             }}
-                            className="input"
+                            className=""
                             placeholder="0.00"
                             required
                           />
                         </div>
                         <div>
                           <label className="label">Rate/Hour</label>
-                          <input
+                          <Input
                             type="number"
                             step="0.01"
                             value={formData.ratePerHour}
@@ -587,7 +644,7 @@ export default function Employees() {
                               setFormData({ ...formData, ratePerHour: e.target.value });
                               if (editingEmployee) setRecalculateRates(false);
                             }}
-                            className="input"
+                            className=""
                             placeholder="0.00"
                             required
                           />
@@ -597,9 +654,9 @@ export default function Employees() {
                       {parseFloat(formData.salary) > 0 && (
                         <p className="text-xs text-slate-500 mt-2">
                           {formData.calculationMethod === 'ANNUAL' ? (
-                            <>Formula: ({formatCurrency(parseFloat(formData.salary))} × 12) ÷ 313 = {formatCurrency(parseFloat(formData.ratePerDay))}/day</>
+                            <>Formula: ({formatCurrency(parseFloat(formData.salary))} x 12) / 313 = {formatCurrency(parseFloat(formData.ratePerDay))}/day</>
                           ) : (
-                            <>Formula: {formatCurrency(parseFloat(formData.salary))} ÷ {selectedBranchData?.workingDaysPerMonth ?? DEFAULT_WORKING_DAYS_PER_MONTH} = {formatCurrency(parseFloat(formData.ratePerDay))}/day</>
+                            <>Formula: {formatCurrency(parseFloat(formData.salary))} / {selectedBranchData?.workingDaysPerMonth ?? DEFAULT_WORKING_DAYS_PER_MONTH} = {formatCurrency(parseFloat(formData.ratePerDay))}/day</>
                           )}
                         </p>
                       )}
@@ -607,71 +664,70 @@ export default function Employees() {
 
                     <div className="md:col-span-2">
                       <label className="label">Address</label>
-                      <input
+                      <Input
                         type="text"
                         value={formData.address}
                         onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                        className="input"
+                        className=""
                         placeholder="Full address"
                       />
                     </div>
 
                     <div>
                       <label className="label">SSS Number</label>
-                      <input
+                      <Input
                         type="text"
                         value={formData.sssNo}
                         onChange={(e) => setFormData({ ...formData, sssNo: e.target.value })}
-                        className="input"
+                        className=""
                         placeholder="XX-XXXXXXX-X"
                       />
                     </div>
 
                     <div>
                       <label className="label">TIN Number</label>
-                      <input
+                      <Input
                         type="text"
                         value={formData.tinNo}
                         onChange={(e) => setFormData({ ...formData, tinNo: e.target.value })}
-                        className="input"
+                        className=""
                         placeholder="XXX-XXX-XXX-XXX"
                       />
                     </div>
 
                     <div>
                       <label className="label">PhilHealth Number</label>
-                      <input
+                      <Input
                         type="text"
                         value={formData.philhealthNo}
                         onChange={(e) => setFormData({ ...formData, philhealthNo: e.target.value })}
-                        className="input"
+                        className=""
                         placeholder="XX-XXXXXXXXX-X"
                       />
                     </div>
 
                     <div>
                       <label className="label">Pag-IBIG Number</label>
-                      <input
+                      <Input
                         type="text"
                         value={formData.pagibigNo}
                         onChange={(e) => setFormData({ ...formData, pagibigNo: e.target.value })}
-                        className="input"
+                        className=""
                         placeholder="XXXX-XXXX-XXXX"
                       />
                     </div>
                   </div>
 
                   <div className="flex justify-end gap-3 pt-4 border-t">
-                    <button type="button" onClick={closeModal} className="btn-secondary">
+                    <Button type="button" variant="outline" onClick={closeModal}>
                       Cancel
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="submit"
-                      className="btn-primary"
                       disabled={createMutation.isPending || updateMutation.isPending}
                     >
                       {editingEmployee ? 'Save Changes' : 'Add Employee'}
-                    </button>
+                    </Button>
                   </div>
                 </form>
               </div>
@@ -694,6 +750,28 @@ export default function Employees() {
             onClose={() => setExclusionsEmployee(null)}
           />
         )}
+
+        {/* Delete Confirmation Modal */}
+        <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Employee</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete "{deleteTarget?.name}"? This will deactivate the employee and they will no longer appear in lists.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+                disabled={deleteMutation.isPending}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleteMutation.isPending ? 'Deleting...' : 'Delete Employee'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </>
   );

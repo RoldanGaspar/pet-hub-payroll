@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Calculator, Trash2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { useNavigate } from 'react-router-dom';
 
 import Header from '../components/layout/Header';
@@ -73,12 +75,51 @@ export default function Payroll() {
     <Header title="Payroll Calculator" subtitle="Calculate, finalize, and print employee payroll" />
     <div className="p-6 pb-28">
       <PeriodHeader branches={branches as Branch[]} selectedBranch={selectedBranch} onBranchChange={setSelectedBranch} onCreatePeriod={() => setIsCreateModalOpen(true)} />
-      {batchError && <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{batchError}<button onClick={() => setBatchError('')} className="ml-auto text-amber-900 underline">Dismiss</button></div>}
-      {isLoading ? <div className="card p-8 text-center"><div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-primary-200 border-t-primary-600" /></div> : Object.keys(groupedPayrolls).length ? <div className="space-y-6">{(Object.entries(groupedPayrolls) as Array<[string, PayrollGroup]>).map(([key, group]) => {
+      {batchError && <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{batchError}<Button variant="link" size="sm" onClick={() => setBatchError('')} className="ml-auto text-amber-900">Dismiss</Button></div>}
+      {isLoading ? <Card className="p-8 text-center"><div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-primary-200 border-t-primary-600" /></Card> : Object.keys(groupedPayrolls).length ? <div className="space-y-6">{(Object.entries(groupedPayrolls) as Array<[string, PayrollGroup]>).map(([key, group]) => {
         const filtered = filterPayrolls(group.payrolls, activeFilterTab);
         if (!filtered.length) return null;
-        return <section key={key} className="card border-l-4 border-l-primary-500"><div className="card-header bg-gradient-to-r from-slate-50 to-white"><div className="flex items-center justify-between gap-4"><div><h3 className="text-lg font-bold text-slate-900">{formatDateRange(group.startDate, group.endDate)}</h3><p className="mt-1 text-sm font-medium text-slate-600">{filtered.length} employee{filtered.length === 1 ? '' : 's'}{filtered.length < group.payrolls.length && <span className="ml-1 text-slate-400">(filtered from {group.payrolls.length})</span>}</p></div><div className="flex flex-wrap gap-2"><BranchIncentiveDrawer onOpen={() => navigate(`/payroll/incentive-sheet/${group.payrolls[0].id}`)} /><button onClick={() => handleDeletePeriod(group)} className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100"><Trash2 className="h-4 w-4" />Delete Period</button></div></div></div><div className="px-4 pt-3"><PayrollFilterBar activeTab={activeFilterTab} onTabChange={setActiveFilterTab} counts={filterCounts} /></div><PayrollTable payrolls={filtered} selectedIds={selectedIds} expandedPayroll={expandedPayroll} isAdmin={user?.role === 'ADMIN'} onToggleAll={toggleAll} onToggleSelected={toggleSelected} onToggleExpand={(id) => setExpandedPayroll((current) => current === id ? null : id)} onFieldUpdate={handleFieldUpdate} onOpenIncentiveModal={setIncentiveModalPayroll} onApplyFixedDeductions={(id) => applyFixedDeductionsMutation.mutate(id)} onCalculate={(id) => calculatePayrollMutation.mutate(id)} onDelete={handleDelete} onReopen={handleReopen} isDeleting={deletePayrollMutation.isPending} /></section>;
-      })}</div> : <div className="card p-12 text-center"><Calculator className="mx-auto mb-4 h-12 w-12 text-slate-300" /><h3 className="mb-2 text-lg font-medium text-slate-900">No payroll periods</h3><p className="mb-4 text-slate-500">Create a new payroll period to get started</p><button onClick={() => setIsCreateModalOpen(true)} className="btn-primary">Create Payroll Period</button></div>}
+        return (
+          <Card key={key} className="border-l-4 border-l-primary-500">
+            <div className="card-header bg-gradient-to-r from-slate-50 to-white">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">{formatDateRange(group.startDate, group.endDate)}</h3>
+                  <p className="mt-1 text-sm font-medium text-slate-600">
+                    {filtered.length} employee{filtered.length === 1 ? '' : 's'}
+                    {filtered.length < group.payrolls.length && <span className="ml-1 text-slate-400">(filtered from {group.payrolls.length})</span>}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <BranchIncentiveDrawer onOpen={() => navigate(`/payroll/incentive-sheet/${group.payrolls[0].id}`)} />
+                  <Button variant="outline" onClick={() => handleDeletePeriod(group)} className="flex items-center gap-2 border-red-200 text-red-700 hover:bg-red-100">
+                    <Trash2 className="h-4 w-4" />Delete Period
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <div className="px-4 pt-3">
+              <PayrollFilterBar activeTab={activeFilterTab} onTabChange={setActiveFilterTab} counts={filterCounts} />
+            </div>
+            <PayrollTable
+              payrolls={filtered}
+              selectedIds={selectedIds}
+              expandedPayroll={expandedPayroll}
+              isAdmin={user?.role === 'ADMIN'}
+              onToggleAll={toggleAll}
+              onToggleSelected={toggleSelected}
+              onToggleExpand={(id) => setExpandedPayroll((current) => current === id ? null : id)}
+              onFieldUpdate={handleFieldUpdate}
+              onOpenIncentiveModal={setIncentiveModalPayroll}
+              onApplyFixedDeductions={(id) => applyFixedDeductionsMutation.mutate(id)}
+              onCalculate={(id) => calculatePayrollMutation.mutate(id)}
+              onDelete={handleDelete}
+              onReopen={handleReopen}
+              isDeleting={deletePayrollMutation.isPending}
+            />
+          </Card>
+        );
+      })}</div> : <Card className="p-12 text-center"><Calculator className="mx-auto mb-4 h-12 w-12 text-slate-300" /><h3 className="mb-2 text-lg font-medium text-slate-900">No payroll periods</h3><p className="mb-4 text-slate-500">Create a new payroll period to get started</p><Button onClick={() => setIsCreateModalOpen(true)}>Create Payroll Period</Button></Card>}
     </div>
     <BatchActionToolbar count={selectedIds.size} isProcessing={isProcessing} onClear={() => setSelectedIds(new Set())} onPrint={() => setIsBatchPrintOpen(true)} onRecalculate={() => calculateBatchMutation.mutate(Array.from(selectedIds))} onApprove={() => { if (window.confirm(`Approve and lock ${selectedIds.size} selected payroll record${selectedIds.size === 1 ? '' : 's'}? An administrator will be required to re-open them.`)) approveBatchMutation.mutate(Array.from(selectedIds)); }} />
     {isCreateModalOpen && <CreatePeriodModal branches={branches as Branch[]} onClose={() => setIsCreateModalOpen(false)} />}

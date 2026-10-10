@@ -8,10 +8,17 @@ import { assertPayrollEditable } from '../payroll/payroll-lock';
 export class CashAdvanceService {
   private recalculationService = new RecalculationService();
 
-  async getAll(employeeId?: number, isPaid?: boolean) {
+  async getAll(query?: { employeeId?: number; isPaid?: boolean; search?: string; branchId?: number }) {
     const where: any = {};
-    if (employeeId) where.employeeId = employeeId;
-    if (isPaid !== undefined) where.isPaid = isPaid;
+    if (query?.employeeId) where.employeeId = query.employeeId;
+    if (query?.isPaid !== undefined) where.isPaid = query.isPaid;
+    if (query?.branchId) {
+      where.employee = { branchId: query.branchId };
+    }
+    if (query?.search) {
+      const s = query.search;
+      where.employee = { ...(where.employee || {}), name: { contains: s, mode: 'insensitive' } };
+    }
     return prisma.cashAdvance.findMany({ where, include: { employee: { include: { branch: true } } }, orderBy: { dateTaken: 'desc' } });
   }
 

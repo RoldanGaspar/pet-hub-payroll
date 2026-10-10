@@ -73,4 +73,11 @@ router.post('/:id/reactivate', authMiddleware, requireRole(['ADMIN']), async (re
   } catch (e) { next(e); }
 });
 
+// DELETE /branches/:id (Admin only)
+router.delete('/:id', authMiddleware, requireRole(['ADMIN']), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    return res.json(await service.delete(parseInt(req.params.id as string)));
+  } catch (e) { next(e); }
+});
+
 export default router;

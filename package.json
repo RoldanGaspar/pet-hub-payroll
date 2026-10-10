@@ -1,0 +1,17 @@
+{
+  "scripts": {
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "backend/src/**/*.ts": [
+      "cd backend && npx tsc --noEmit"
+    ],
+    "frontend/src/**/*.{ts,tsx}": [
+      "cd frontend && npx tsc --noEmit"
+    ]
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^17.2.0"
+  }
+}

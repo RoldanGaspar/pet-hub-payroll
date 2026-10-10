@@ -220,4 +220,31 @@ export class BranchService {
     await prisma.branch.update({ where: { id }, data: { isActive: true } });
     return { message: 'Branch reactivated successfully' };
   }
+
+  async delete(id: number) {
+    const branch = await prisma.branch.findUnique({
+      where: { id },
+      include: {
+        _count: {
+          select: { employees: true, users: true, incentiveSheets: true },
+        },
+      },
+    });
+    if (!branch) throw new NotFoundError('Branch', id);
+
+    if (branch._count.employees > 0) {
+      throw new ValidationError(
+        `Cannot delete branch with ${branch._count.employees} employees. Transfer or delete employees first.`
+      );
+    }
+
+    if (branch._count.incentiveSheets > 0) {
+      throw new ValidationError(
+        `Cannot delete branch with existing incentive sheets. Remove them first.`
+      );
+    }
+
+    await prisma.branch.delete({ where: { id } });
+    return { message: 'Branch deleted successfully' };
+  }
 }
